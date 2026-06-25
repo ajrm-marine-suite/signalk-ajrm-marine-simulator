@@ -70,7 +70,7 @@ module.exports = function ajrmMarineSimulator(app) {
     cfg = normalizeConfig(props)
     own = initialOwn(cfg)
     env = initialEnvironment(cfg)
-    targets = new Map(defaultTargets().map((target) => [target.id, target]))
+    targets = new Map(initialTargets(cfg).map((target) => [target.id, target]))
     startedAtMs = Date.now()
     lastTickMs = startedAtMs
     publishSnapshot()
@@ -95,7 +95,7 @@ module.exports = function ajrmMarineSimulator(app) {
       if (!cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const wasEnabled = cfg.outputEnabled
       cfg.outputEnabled = req.body?.enabled === true
-      if (!wasEnabled && cfg.outputEnabled) publishSnapshot()
+      if (!wasEnabled && cfg.outputEnabled) publishSnapshot({ includeStatic: true })
       setStatus()
       res.json(publicState())
     })
@@ -171,9 +171,9 @@ module.exports = function ajrmMarineSimulator(app) {
     setStatus()
   }
 
-  function publishSnapshot() {
+  function publishSnapshot({ includeStatic = false } = {}) {
     publishOwn()
-    for (const target of targets.values()) publishTarget(target)
+    for (const target of targets.values()) publishTarget(target, includeStatic)
   }
 
   function publishOwn({ includePosition = true } = {}) {
@@ -299,6 +299,9 @@ module.exports = function ajrmMarineSimulator(app) {
   }
 
   function targetStaticValues(target) {
+    const rootValue = {}
+    if (target.name) rootValue.name = transmittedName(target)
+    if (target.callsign) rootValue.communication = { callsignVhf: target.callsign }
     const values = [
       { path: 'design.aisShipType', value: { id: target.aisShipType, name: AIS_TYPES[target.aisShipType] || 'Unknown' } },
       { path: 'design.length', value: { overall: target.length } },
@@ -308,8 +311,7 @@ module.exports = function ajrmMarineSimulator(app) {
       { path: 'sensors.ais.fromCenter', value: target.aisFromCenter },
       { path: 'sensors.ais.class', value: target.aisClass }
     ]
-    if (target.name) values.push({ path: '', value: { name: transmittedName(target) } })
-    if (target.callsign) values.push({ path: '', value: { communication: { callsignVhf: target.callsign } } })
+    if (Object.keys(rootValue).length > 0) values.push({ path: '', value: rootValue })
     if (target.destination) values.push({ path: 'navigation.destination.commonName', value: target.destination })
     if (target.eta) values.push({ path: 'navigation.destination.eta', value: target.eta })
     if (target.imo) values.push({ path: 'registrations.imo', value: target.imo })
@@ -546,7 +548,9 @@ module.exports = function ajrmMarineSimulator(app) {
       outputPeriod: clamp(props.outputPeriod, 0.2, 10, DEFAULT_PERIOD_SECONDS),
       routeTurnRudderAngleDeg: clamp(props.routeTurnRudderAngleDeg, 1, MAX_RUDDER_DEG, DEFAULT_ROUTE_RUDDER_DEG),
       own: props.own || {},
-      environment: props.environment || {}
+      environment: props.environment || {},
+      targets: Array.isArray(props.targets) ? props.targets : defaultTargetConfig(),
+      fixedStations: Array.isArray(props.fixedStations) ? props.fixedStations : defaultFixedStationConfig()
     }
   }
 
@@ -610,10 +614,11 @@ module.exports = function ajrmMarineSimulator(app) {
     return state
   }
 
-  function defaultTargets() {
-    const targets = DEFAULT_TARGETS.map(([id, name, mmsi, callsign, grossTonnage, aisShipType, length, width, latitude, longitude, course, speed, legDuration, aisFromBow, aisFromCenter]) => ({
+  function defaultTargetConfig() {
+    return DEFAULT_TARGETS.map(([id, name, mmsi, callsign, grossTonnage, aisShipType, length, width, latitude, longitude, course, speed, legDuration, aisFromBow, aisFromCenter]) => ({
       id,
       enabled: true,
+      autopilotEnabled: true,
       name,
       mmsi,
       callsign,
@@ -628,35 +633,96 @@ module.exports = function ajrmMarineSimulator(app) {
       imo: grossTonnage > 300 ? `IMO932${String(mmsi).slice(-4)}` : '',
       aisFromBow,
       aisFromCenter,
-      latitude,
-      longitude,
-      courseDeg: normalizeDeg(course),
+      startPosition: { latitude, longitude },
+      initialCourseDeg: course,
       speedKn: speed,
       legDuration,
-      autopilotEnabled: true,
+      emergencyMode: 'none',
+      gpsFaultMode: 'normal'
+    }))
+  }
+
+  function defaultFixedStationConfig() {
+    return [
+      {
+        id: 'base-1',
+        enabled: true,
+        name: 'Craobh AIS Base',
+        mmsi: '002350001',
+        startPosition: { latitude: 56.211333, longitude: -5.559139 }
+      },
+      {
+        id: 'base-2',
+        enabled: true,
+        name: 'Kilmelford AIS Base',
+        mmsi: '002350002',
+        startPosition: { latitude: 56.267286, longitude: -5.552714 }
+      }
+    ]
+  }
+
+  function initialTargets(config) {
+    const moving = (config.targets || []).slice(0, 20).map((raw, index) => targetFromConfig(raw, index))
+    const stations = (config.fixedStations || []).slice(0, 20).map((raw, index) => fixedStationFromConfig(raw, index))
+    return [...moving, ...stations].filter(Boolean)
+  }
+
+  function targetFromConfig(raw = {}, index = 0) {
+    const fallback = defaultTargetConfig()[index] || defaultTargetConfig()[0]
+    const length = clamp(raw.length, 0, 500, fallback.length)
+    const width = clamp(raw.width, 0, 100, fallback.width)
+    const mmsi = String(raw.mmsi || fallback.mmsi || '').trim()
+    if (!mmsi) return null
+    const position = raw.startPosition || {}
+    const latitude = clamp(position.latitude, -90, 90, fallback.startPosition.latitude)
+    const longitude = clamp(position.longitude, -180, 180, fallback.startPosition.longitude)
+    return {
+      id: String(raw.id || fallback.id || mmsi),
+      enabled: raw.enabled !== false,
+      name: String(raw.name ?? fallback.name ?? ''),
+      mmsi,
+      callsign: String(raw.callsign ?? fallback.callsign ?? ''),
+      grossTonnage: clamp(raw.grossTonnage, 0, 500000, fallback.grossTonnage || 0),
+      aisShipType: Math.round(clamp(raw.aisShipType, 0, 99, fallback.aisShipType || 36)),
+      aisClass: String(raw.aisClass || fallback.aisClass || ((Number(raw.grossTonnage || fallback.grossTonnage || 0) > 300) ? 'A' : 'B')).toUpperCase() === 'A' ? 'A' : 'B',
+      length,
+      width,
+      draft: clamp(raw.draft, 0, 30, fallback.draft ?? Math.max(0.5, round(width * 0.18, 1))),
+      destination: String(raw.destination ?? fallback.destination ?? ''),
+      eta: String(raw.eta ?? fallback.eta ?? ''),
+      imo: String(raw.imo ?? fallback.imo ?? ''),
+      aisFromBow: clamp(raw.aisFromBow, 0, Math.max(0, length), fallback.aisFromBow ?? Math.max(0, round(length * 0.8, 1))),
+      aisFromCenter: clamp(raw.aisFromCenter, -Math.max(0, width / 2), Math.max(0, width / 2), fallback.aisFromCenter ?? 0),
+      latitude,
+      longitude,
+      courseDeg: normalizeDeg(raw.initialCourseDeg ?? raw.courseDeg ?? fallback.initialCourseDeg ?? 0),
+      speedKn: clamp(raw.speedKn, 0, 40, fallback.speedKn ?? 0),
+      legDuration: clamp(raw.legDuration, 10, 86400, fallback.legDuration ?? DEFAULT_LEG_SECONDS),
+      autopilotEnabled: raw.autopilotEnabled !== false,
       routeTurning: false,
       routeTargetDeg: null,
       legStartMs: Date.now(),
       rudderAngleDeg: 0,
       rateOfTurnDegPerSecond: 0,
-      emergencyMode: 'none',
-      gpsFaultMode: 'normal',
+      emergencyMode: emergencyModeFor(raw.emergencyMode || fallback.emergencyMode || 'none'),
+      gpsFaultMode: GPS_FAULT_MODES.includes(raw.gpsFaultMode) ? raw.gpsFaultMode : (fallback.gpsFaultMode || 'normal'),
       gpsSpoofOffsetM: 0,
       isFixedStation: false
-    }))
-    targets.push(
-      fixedStation('base-1', 'Craobh AIS Base', '002350001', 56.211333, -5.559139),
-      fixedStation('base-2', 'Kilmelford AIS Base', '002350002', 56.267286, -5.552714)
-    )
-    return targets
+    }
   }
 
-  function fixedStation(id, name, mmsi, latitude, longitude) {
+  function fixedStationFromConfig(raw = {}, index = 0) {
+    const fallback = defaultFixedStationConfig()[index] || defaultFixedStationConfig()[0]
+    const mmsi = String(raw.mmsi || fallback.mmsi || '').trim()
+    if (!mmsi) return null
+    const position = raw.startPosition || {}
+    const latitude = clamp(position.latitude, -90, 90, fallback.startPosition.latitude)
+    const longitude = clamp(position.longitude, -180, 180, fallback.startPosition.longitude)
     return {
-      id,
-      name,
+      id: String(raw.id || fallback.id || mmsi),
+      name: String(raw.name ?? fallback.name ?? ''),
       mmsi,
-      enabled: true,
+      enabled: raw.enabled !== false,
       aisClass: 'BASE',
       isFixedStation: true,
       latitude,
@@ -672,6 +738,66 @@ module.exports = function ajrmMarineSimulator(app) {
       autopilotEnabled: false,
       emergencyMode: 'none',
       gpsFaultMode: 'normal'
+    }
+  }
+
+  function targetSchema() {
+    return {
+      type: 'object',
+      title: 'AIS target',
+      required: ['id', 'mmsi', 'startPosition'],
+      properties: {
+        id: { type: 'string', title: 'Internal id' },
+        enabled: { type: 'boolean', title: 'Enabled', default: true },
+        autopilotEnabled: { type: 'boolean', title: 'Autopilot enabled', default: true },
+        name: { type: 'string', title: 'Vessel name' },
+        mmsi: { type: 'string', title: 'MMSI' },
+        callsign: { type: 'string', title: 'Call sign' },
+        aisClass: { type: 'string', title: 'AIS class', enum: ['A', 'B'], default: 'B' },
+        grossTonnage: { type: 'number', title: 'Gross tonnage', default: 12 },
+        aisShipType: { type: 'number', title: 'AIS ship type id', default: 36 },
+        length: { type: 'number', title: 'Length (m)', default: 10 },
+        width: { type: 'number', title: 'Beam (m)', default: 3 },
+        draft: { type: 'number', title: 'Draft (m)', default: 1 },
+        aisFromBow: { type: 'number', title: 'AIS/GPS antenna from bow (m)', default: 8 },
+        aisFromCenter: { type: 'number', title: 'AIS/GPS antenna from centreline (m)', default: 0 },
+        destination: { type: 'string', title: 'Destination' },
+        eta: { type: 'string', title: 'ETA' },
+        imo: { type: 'string', title: 'IMO number' },
+        startPosition: positionSchema('Start position'),
+        initialCourseDeg: { type: 'number', title: 'Initial course over ground (deg true)', default: 90 },
+        speedKn: { type: 'number', title: 'Speed over ground (kn)', default: 2 },
+        legDuration: { type: 'number', title: 'Route leg seconds', default: DEFAULT_LEG_SECONDS },
+        emergencyMode: { type: 'string', title: 'Startup emergency mode', enum: Object.keys(EMERGENCY_MODES), default: 'none' },
+        gpsFaultMode: { type: 'string', title: 'GPS fault mode', enum: GPS_FAULT_MODES, default: 'normal' }
+      }
+    }
+  }
+
+  function fixedStationSchema() {
+    return {
+      type: 'object',
+      title: 'Fixed AIS station',
+      required: ['id', 'mmsi', 'startPosition'],
+      properties: {
+        id: { type: 'string', title: 'Internal id' },
+        enabled: { type: 'boolean', title: 'Enabled', default: true },
+        name: { type: 'string', title: 'Station name' },
+        mmsi: { type: 'string', title: 'MMSI' },
+        startPosition: positionSchema('Position')
+      }
+    }
+  }
+
+  function positionSchema(title) {
+    return {
+      type: 'object',
+      title,
+      required: ['latitude', 'longitude'],
+      properties: {
+        latitude: { type: 'number', title: 'Latitude', default: DEFAULT_BASE.latitude },
+        longitude: { type: 'number', title: 'Longitude', default: DEFAULT_BASE.longitude }
+      }
     }
   }
 
@@ -729,6 +855,22 @@ module.exports = function ajrmMarineSimulator(app) {
             windVarying: { type: 'boolean', title: 'Vary wind over time', default: true },
             currentVarying: { type: 'boolean', title: 'Vary current/tide over time', default: true }
           }
+        },
+        targets: {
+          type: 'array',
+          title: 'AIS targets',
+          description: 'Moving simulated AIS vessels. Edit these to change the target fleet published by the simulator.',
+          maxItems: 20,
+          items: targetSchema(),
+          default: defaultTargetConfig()
+        },
+        fixedStations: {
+          type: 'array',
+          title: 'Fixed AIS stations',
+          description: 'Stationary AIS base stations published by the simulator.',
+          maxItems: 20,
+          items: fixedStationSchema(),
+          default: defaultFixedStationConfig()
         }
       }
     }

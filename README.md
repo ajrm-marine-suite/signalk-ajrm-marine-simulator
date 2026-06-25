@@ -67,7 +67,7 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+ssh://git@ssh.github.com:443/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.0 --omit=dev --no-package-lock
+npm install git+ssh://git@ssh.github.com:443/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.1 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

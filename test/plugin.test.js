@@ -95,6 +95,84 @@ test('plugin publishes nothing while master output is off, then publishes own an
   plugin.stop()
 })
 
+test('plugin schema exposes editable AIS target and fixed station fleets', () => {
+  const plugin = createPlugin({ setPluginStatus() {}, handleMessage() {} })
+  const targetDefaults = plugin.schema.properties.targets.default
+  const stationDefaults = plugin.schema.properties.fixedStations.default
+
+  assert.equal(plugin.schema.properties.targets.type, 'array')
+  assert.equal(plugin.schema.properties.targets.items.properties.mmsi.title, 'MMSI')
+  assert.equal(targetDefaults[0].name, 'NORTH CHANNEL')
+  assert.equal(targetDefaults[0].startPosition.latitude, 56.1625)
+  assert.equal(plugin.schema.properties.fixedStations.type, 'array')
+  assert.equal(stationDefaults[0].name, 'Craobh AIS Base')
+})
+
+test('configured AIS target fleet is used at startup', () => {
+  const messages = []
+  const app = {
+    setPluginStatus() {},
+    handleMessage(id, delta) {
+      messages.push({ id, delta })
+    }
+  }
+  const routes = new Map()
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      targets: [
+        {
+          id: 'custom-ship',
+          enabled: true,
+          autopilotEnabled: false,
+          name: 'CUSTOM TRADER',
+          mmsi: '235901234',
+          callsign: 'CUS123',
+          grossTonnage: 1500,
+          aisShipType: 70,
+          aisClass: 'A',
+          length: 42,
+          width: 9,
+          aisFromBow: 30,
+          aisFromCenter: -1,
+          startPosition: { latitude: 56.25, longitude: -5.6 },
+          initialCourseDeg: 123,
+          speedKn: 6.5,
+          legDuration: 99
+        }
+      ],
+      fixedStations: [
+        {
+          id: 'custom-base',
+          enabled: true,
+          name: 'CUSTOM BASE',
+          mmsi: '002351234',
+          startPosition: { latitude: 56.3, longitude: -5.7 }
+        }
+      ]
+    })
+    invoke(routes, 'POST', '/output', { enabled: true })
+
+    const targetValues = allValuesByPath(messages, '235901234')
+    assert.deepEqual(targetValues[''], {
+      name: 'CUSTOM TRADER',
+      communication: { callsignVhf: 'CUS123' }
+    })
+    assert.deepEqual(targetValues['navigation.position'], { latitude: 56.25, longitude: -5.6 })
+    assert.equal(targetValues['navigation.speedOverGround'], 6.5 * KNOTS_TO_MPS)
+    assert.equal(targetValues['sensors.ais.fromBow'], 30)
+    assert.equal(targetValues['sensors.ais.fromCenter'], -1)
+
+    const stationValues = allValuesByPath(messages, '002351234')
+    assert.deepEqual(stationValues[''], { name: 'CUSTOM BASE' })
+    assert.deepEqual(stationValues['navigation.position'], { latitude: 56.3, longitude: -5.7 })
+    assert.equal(stationValues['navigation.state'], 'baseStation')
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('saved enabled config still starts with simulator output off', () => {
   const messages = []
   const routes = new Map()
@@ -386,4 +464,12 @@ function latestValuesByPath(messages, mmsi) {
     .at(-1)
   assert.ok(message, `expected message for ${mmsi}`)
   return Object.fromEntries(message.delta.updates[0].values.map((item) => [item.path, item.value]))
+}
+
+function allValuesByPath(messages, mmsi) {
+  const matching = messages.filter((entry) => String(entry.delta.context).includes(mmsi))
+  assert.ok(matching.length > 0, `expected message for ${mmsi}`)
+  return Object.fromEntries(
+    matching.flatMap((message) => message.delta.updates[0].values.map((item) => [item.path, item.value]))
+  )
 }
