@@ -95,7 +95,10 @@ module.exports = function ajrmMarineSimulator(app) {
       if (!cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const wasEnabled = cfg.outputEnabled
       cfg.outputEnabled = req.body?.enabled === true
-      if (!wasEnabled && cfg.outputEnabled) publishSnapshot({ includeStatic: true })
+      if (!wasEnabled && cfg.outputEnabled) {
+        resetAutopilotLegTimers()
+        publishSnapshot({ includeStatic: true })
+      }
       setStatus()
       res.json(publicState())
     })
@@ -435,6 +438,20 @@ module.exports = function ajrmMarineSimulator(app) {
     own.rudderAngleDeg = 0
     own.legStartMs = Date.now()
     own.gpsSpoofOffsetM = 0
+  }
+
+  function resetAutopilotLegTimers() {
+    const now = Date.now()
+    if (own) resetRouteTimer(own, now)
+    for (const target of targets.values()) resetRouteTimer(target, now)
+  }
+
+  function resetRouteTimer(item, now) {
+    item.legStartMs = now
+    item.routeTurning = false
+    item.routeTargetDeg = null
+    item.rudderAngleDeg = 0
+    item.rateOfTurnDegPerSecond = 0
   }
 
   function updateEnvironment(values) {

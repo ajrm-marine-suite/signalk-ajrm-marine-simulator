@@ -429,6 +429,70 @@ test('automatic left turns publish negative rate of turn', () => {
   }
 })
 
+test('autopilot leg timers start when simulator output is enabled', () => {
+  const routes = new Map()
+  const realDateNow = Date.now
+  const realSetInterval = global.setInterval
+  const realClearInterval = global.clearInterval
+  let now = Date.parse('2026-06-25T12:00:00.000Z')
+  let tick = null
+  Date.now = () => now
+  global.setInterval = (handler) => {
+    tick = handler
+    return 1
+  }
+  global.clearInterval = () => {}
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  let plugin
+  try {
+    plugin = createPlugin(app)
+    plugin.registerWithRouter(routerMap(routes))
+    plugin.start({
+      own: {
+        autopilotEnabled: true,
+        legDuration: 300
+      },
+      targets: [
+        {
+          id: 'test-target',
+          mmsi: '235900999',
+          name: 'TEST TARGET',
+          startPosition: { latitude: 56.16, longitude: -5.55 },
+          courseDeg: 90,
+          speedKn: 5,
+          legDuration: 300,
+          autopilotEnabled: true
+        }
+      ]
+    })
+    now += 301000
+    tick()
+    const state = invoke(routes, 'POST', '/output', { enabled: true })
+    assert.equal(state.own.routeTurning, false)
+    assert.equal(state.targets.find((target) => target.id === 'test-target').routeTurning, false)
+    tick()
+    const afterFirstEnabledTick = invoke(routes, 'GET', '/state')
+    assert.equal(afterFirstEnabledTick.own.routeTurning, false)
+    assert.equal(
+      afterFirstEnabledTick.targets.find((target) => target.id === 'test-target').routeTurning,
+      false
+    )
+    now += 300000
+    tick()
+    const afterLeg = invoke(routes, 'GET', '/state')
+    assert.equal(afterLeg.own.routeTurning, true)
+    assert.equal(afterLeg.targets.find((target) => target.id === 'test-target').routeTurning, true)
+  } finally {
+    plugin?.stop()
+    Date.now = realDateNow
+    global.setInterval = realSetInterval
+    global.clearInterval = realClearInterval
+  }
+})
+
 function invoke(routes, method, path, body = {}, params = {}) {
   return invokeWithParams(routes, method, path, body, params)
 }
