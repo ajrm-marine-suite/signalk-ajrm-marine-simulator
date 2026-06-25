@@ -1,0 +1,47 @@
+{
+  "name": "signalk-ajrm-marine-simulator",
+  "version": "0.5.0",
+  "description": "Own-vessel, environment, GNSS, and AIS target simulator for AJRM Marine Suite testing.",
+  "main": "plugin/index.js",
+  "scripts": {
+    "test": "node --check plugin/index.js && node --test"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-ais",
+    "signalk-category-utility",
+    "simulator",
+    "watchkeeper",
+    "signal-k",
+    "signalk",
+    "ajrm-marine-suite",
+    "marine",
+    "navigation"
+  ],
+  "author": "Anthony McDonald, with assistance from William McAusland",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator/issues"
+  },
+  "homepage": "https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "plugin",
+    "public",
+    "test",
+    "README.md",
+    "LICENSE"
+  ],
+  "signalk-plugin-enabled-by-default": false,
+  "signalk": {
+    "displayName": "AJRM Marine Simulator",
+    "appIcon": "./icon-120.png"
+  }
+}

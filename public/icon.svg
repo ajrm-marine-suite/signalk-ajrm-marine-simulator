@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Vessel Simulator">
+  <rect width="120" height="120" rx="22" fill="#0f172a"/>
+  <path d="M16 82c9-7 18-7 27 0s18 7 27 0 18-7 34 0" fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round"/>
+  <path d="M19 92c12 8 24 8 36 0s24-8 46 0" fill="none" stroke="#67e8f9" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+  <path d="M34 54h20l8 13H25z" fill="#f8fafc"/>
+  <path d="M42 37h8v17h-8z" fill="#f97316"/>
+  <path d="M67 45h26l9 17H56z" fill="#e2e8f0"/>
+  <path d="M76 26h10v19H76z" fill="#22c55e"/>
+  <path d="M23 67h40l-7 13H29z" fill="#2563eb"/>
+  <path d="M56 62h48l-9 18H64z" fill="#dc2626"/>
+  <circle cx="36" cy="61" r="2.5" fill="#0f172a"/>
+  <circle cx="46" cy="61" r="2.5" fill="#0f172a"/>
+  <circle cx="73" cy="55" r="2.5" fill="#0f172a"/>
+  <circle cx="84" cy="55" r="2.5" fill="#0f172a"/>
+  <path d="M18 28l10 8-10 8" fill="none" stroke="#facc15" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M102 28l-10 8 10 8" fill="none" stroke="#facc15" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

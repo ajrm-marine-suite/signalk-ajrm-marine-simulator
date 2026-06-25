@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AJRM Marine Simulator</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #101619;
+        color: #f4f7f8;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 10px 12px 128px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      h1, h2, h3, p { margin: 0; }
+
+      h1 { font-size: 20px; }
+      h2 { font-size: 14px; }
+      h3 { font-size: 12px; color: #aab8bf; }
+
+      .toolbar, .panel, .own-strip {
+        border: 1px solid #34454c;
+        border-radius: 8px;
+        background: #1a2428;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px;
+      }
+
+      .master {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 36px;
+        padding: 0 10px;
+        border-radius: 7px;
+        background: #381f24;
+        color: #ffd5dc;
+        font-weight: 800;
+      }
+
+      .master.on {
+        background: #16351f;
+        color: #c8ffd5;
+      }
+
+      .status {
+        color: #aab8bf;
+        font-size: 12px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(280px, 380px) 1fr;
+        gap: 10px;
+      }
+
+      .panel {
+        padding: 10px;
+      }
+
+      .field-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      label {
+        display: grid;
+        gap: 3px;
+        color: #aab8bf;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      input, select, button {
+        min-height: 32px;
+        border: 1px solid #53636b;
+        border-radius: 6px;
+        background: #101619;
+        color: #f4f7f8;
+        font: inherit;
+      }
+
+      input, select {
+        width: 100%;
+        padding: 5px 7px;
+      }
+
+      input[type="checkbox"] {
+        width: auto;
+        min-height: auto;
+      }
+
+      button {
+        padding: 4px 10px;
+        background: linear-gradient(#304249, #202d32);
+        box-shadow: 0 2px 0 #0b1012;
+        cursor: pointer;
+        font-weight: 800;
+      }
+
+      button:active {
+        transform: translateY(1px);
+        box-shadow: 0 1px 0 #0b1012;
+      }
+
+      .targets {
+        display: grid;
+        gap: 7px;
+        margin-top: 8px;
+      }
+
+      .target {
+        display: grid;
+        grid-template-columns: minmax(160px, 1fr) 78px 76px 132px 116px 152px 58px;
+        gap: 8px;
+        align-items: center;
+        padding: 8px;
+        border: 1px solid #34454c;
+        border-radius: 8px;
+        background: #141d20;
+      }
+
+      .name {
+        font-weight: 800;
+      }
+
+      .meta {
+        color: #8fa0a8;
+        font-size: 11px;
+      }
+
+      .target-actions {
+        display: grid;
+        grid-template-columns: repeat(4, 34px);
+        gap: 4px;
+      }
+
+      .target-actions button {
+        min-width: 34px;
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      .target-toggles {
+        display: grid;
+        gap: 2px;
+        justify-items: center;
+      }
+
+      .target-toggles label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+      }
+
+      .own-strip {
+        position: fixed;
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        z-index: 20;
+        display: grid;
+        grid-template-columns: minmax(210px, 1.4fr) repeat(5, minmax(108px, 1fr)) 112px;
+        gap: 7px;
+        padding: 7px;
+        box-shadow: 0 -3px 16px rgba(0,0,0,.28);
+      }
+
+      .own-card {
+        min-height: 76px;
+        padding: 7px;
+        border: 1px solid #34454c;
+        border-radius: 7px;
+        background: #121b1f;
+      }
+
+      .reading {
+        font-size: 22px;
+        font-weight: 850;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .hint {
+        margin-top: 4px;
+        color: #7f929a;
+        font-size: 10px;
+      }
+
+      .adjust {
+        display: grid;
+        grid-template-columns: 28px 1fr 28px;
+        gap: 4px;
+        align-items: center;
+      }
+
+      .stack {
+        display: grid;
+        gap: 4px;
+      }
+
+      @media (max-width: 1100px) {
+        body { padding-bottom: 260px; }
+        .grid { grid-template-columns: 1fr; }
+        .target { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .own-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>AJRM Marine Simulator</h1>
+        <p id="status" class="status">Loading...</p>
+      </div>
+      <div class="toolbar">
+        <label id="masterLabel" class="master">
+          <input id="outputEnabled" type="checkbox">
+          Start simulator output
+        </label>
+        <label>
+          Target autopilot
+          <input id="targetAutopilotEnabled" type="checkbox" disabled>
+        </label>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <h2>Environment</h2>
+        <div class="field-grid">
+          <label>Depth m <input id="depthM" type="number" step="0.1"></label>
+          <label>App wind kn <input id="windSpeed" type="number" step="0.1"></label>
+          <label>App angle deg <input id="windAngle" type="number" step="1"></label>
+          <label>Current drift kn <input id="currentDrift" type="number" step="0.1"></label>
+          <label>Current set deg <input id="currentSet" type="number" step="1"></label>
+          <label>Engine room C <input id="engineTemp" type="number" step="0.1"></label>
+          <label><span><input id="depthVarying" type="checkbox"> Vary depth</span></label>
+          <label><span><input id="windVarying" type="checkbox"> Vary wind</span></label>
+          <label><span><input id="currentVarying" type="checkbox"> Vary current/tide</span></label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>AIS Targets</h2>
+        <div id="targets" class="targets"></div>
+      </section>
+    </main>
+
+    <section class="own-strip" aria-label="Own boat controls">
+      <div class="own-card">
+        <h3>Own Boat</h3>
+        <div id="ownHeadingSpeed" class="reading">--- deg / --.- kn</div>
+        <div id="ownPosition" class="hint">--</div>
+      </div>
+      <div class="own-card">
+        <h3>Heading</h3>
+        <div class="adjust">
+          <button data-own-heading="left">-</button>
+          <input id="ownHeading" type="number" min="0" max="359" step="1">
+          <button data-own-heading="right">+</button>
+        </div>
+        <label><span><input id="ownHeadingEnabled" type="checkbox"> Publish heading</span></label>
+      </div>
+      <div class="own-card">
+        <h3>Speed</h3>
+        <div class="adjust">
+          <button data-own-speed="down">-</button>
+          <input id="ownSpeed" type="number" min="0" max="30" step="0.1">
+          <button data-own-speed="up">+</button>
+        </div>
+      </div>
+      <div class="own-card">
+        <h3>Own GPS</h3>
+        <select id="ownGpsFault"></select>
+        <div class="hint">Use Lost/Intermittent for DR testing</div>
+      </div>
+      <div class="own-card">
+        <h3>Autopilot</h3>
+        <label><span><input id="ownAutopilot" type="checkbox"> Route autopilot</span></label>
+        <label>Leg seconds <input id="ownLegDuration" type="number" min="10" step="10"></label>
+      </div>
+      <div class="own-card">
+        <h3>GNSS</h3>
+        <div id="gnssSummary" class="hint">GPS, GLONASS, Galileo, BeiDou varied</div>
+      </div>
+      <div class="own-card stack">
+        <button id="refresh">Refresh</button>
+        <button id="resetOwn">Reset</button>
+      </div>
+    </section>
+
+    <script>
+      const apiBase = "/plugins/signalk-ajrm-marine-simulator";
+      const els = {
+        status: document.getElementById("status"),
+        outputEnabled: document.getElementById("outputEnabled"),
+        masterLabel: document.getElementById("masterLabel"),
+        targetAutopilotEnabled: document.getElementById("targetAutopilotEnabled"),
+        targets: document.getElementById("targets"),
+        depthM: document.getElementById("depthM"),
+        windSpeed: document.getElementById("windSpeed"),
+        windAngle: document.getElementById("windAngle"),
+        currentDrift: document.getElementById("currentDrift"),
+        currentSet: document.getElementById("currentSet"),
+        engineTemp: document.getElementById("engineTemp"),
+        depthVarying: document.getElementById("depthVarying"),
+        windVarying: document.getElementById("windVarying"),
+        currentVarying: document.getElementById("currentVarying"),
+        ownHeadingSpeed: document.getElementById("ownHeadingSpeed"),
+        ownPosition: document.getElementById("ownPosition"),
+        ownHeading: document.getElementById("ownHeading"),
+        ownHeadingEnabled: document.getElementById("ownHeadingEnabled"),
+        ownSpeed: document.getElementById("ownSpeed"),
+        ownGpsFault: document.getElementById("ownGpsFault"),
+        ownAutopilot: document.getElementById("ownAutopilot"),
+        ownLegDuration: document.getElementById("ownLegDuration"),
+        resetOwn: document.getElementById("resetOwn"),
+        refresh: document.getElementById("refresh")
+      };
+      let state = null;
+
+      async function request(path, body) {
+        const response = await fetch(apiBase + path, {
+          method: body ? "POST" : "GET",
+          headers: { "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : undefined
+        });
+        if (!response.ok) throw new Error(response.status + " " + response.statusText);
+        return response.json();
+      }
+
+      async function post(path, body) {
+        try {
+          render(await request(path, body));
+        } catch (error) {
+          els.status.textContent = error.message;
+        }
+      }
+
+      function render(next) {
+        state = next;
+        const enabledTargets = state.targets.filter((target) => target.enabled).length;
+        els.outputEnabled.checked = state.outputEnabled;
+        els.masterLabel.classList.toggle("on", state.outputEnabled);
+        els.targetAutopilotEnabled.checked = state.targetAutopilotEnabled;
+        els.status.textContent = `${state.outputEnabled ? "PUBLISHING SIMULATED DATA" : "Simulation output OFF"} · ${enabledTargets} targets enabled · v${state.version}`;
+
+        renderOwn(state.own);
+        renderEnvironment(state.environment);
+        renderTargets(state.targets, state.gpsFaultModes);
+      }
+
+      function renderOwn(own) {
+        if (!own) return;
+        els.ownHeadingSpeed.textContent = `${own.headingDeg} deg / ${own.speedKn.toFixed(1)} kn`;
+        els.ownPosition.textContent = `${own.latitude.toFixed(5)}, ${own.longitude.toFixed(5)}`;
+        if (!isEditing()) {
+          els.ownHeading.value = own.headingDeg;
+          els.ownHeadingEnabled.checked = own.headingEnabled !== false;
+          els.ownSpeed.value = own.speedKn.toFixed(1);
+          els.ownAutopilot.checked = own.autopilotEnabled;
+          els.ownLegDuration.value = own.legDuration;
+          fillGpsSelect(els.ownGpsFault, own.gpsFaultMode);
+        }
+      }
+
+      function renderEnvironment(env) {
+        if (!env || isEditing()) return;
+        els.depthM.value = env.depthM.toFixed(1);
+        els.windSpeed.value = env.apparentWindSpeedKn.toFixed(1);
+        els.windAngle.value = env.apparentWindAngleDeg.toFixed(0);
+        els.currentDrift.value = env.currentDriftKn.toFixed(1);
+        els.currentSet.value = env.currentSetDeg.toFixed(0);
+        els.engineTemp.value = env.engineRoomTemperatureC.toFixed(1);
+        els.depthVarying.checked = env.depthVarying;
+        els.windVarying.checked = env.windVarying;
+        els.currentVarying.checked = env.currentVarying;
+      }
+
+      function renderTargets(targets, modes) {
+        els.targets.replaceChildren(...targets.map((target) => {
+          const row = document.createElement("div");
+          row.className = "target";
+          const name = document.createElement("div");
+          name.innerHTML = `<div class="name">${escapeHtml(target.label)}</div><div class="meta">${escapeHtml(target.mmsi)} · ${target.isFixedStation ? "base" : "Class " + target.aisClass}</div>`;
+          const course = document.createElement("div");
+          course.textContent = target.isFixedStation ? "Fixed" : `${target.courseDeg} deg`;
+          const speed = document.createElement("div");
+          speed.textContent = `${target.speedKn.toFixed(1)} kn`;
+          const gps = document.createElement("select");
+          for (const mode of modes) gps.append(new Option(mode, mode));
+          gps.value = target.gpsFaultMode;
+          gps.addEventListener("change", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { gpsFaultMode: gps.value }));
+          const emergency = document.createElement("select");
+          for (const [value, label] of [["none", "Normal"], ["sart", "AIS-SART"], ["mob", "MOB-AIS"], ["epirb", "EPIRB-AIS"]]) emergency.append(new Option(label, value));
+          emergency.value = target.emergencyMode || "none";
+          emergency.disabled = target.isFixedStation;
+          emergency.addEventListener("change", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { emergencyMode: emergency.value }));
+          const actions = document.createElement("div");
+          actions.className = "target-actions";
+          actions.append(
+            miniButton("-", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { speedDirection: "down" })),
+            miniButton("+", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { speedDirection: "up" })),
+            miniButton("L", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { rudderDirection: "left" })),
+            miniButton("R", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { rudderDirection: "right" }))
+          );
+          const toggles = document.createElement("div");
+          toggles.className = "target-toggles";
+          toggles.append(
+            checkbox("On", target.enabled, (checked) => post(`/targets/${encodeURIComponent(target.id)}/control`, { enabled: checked })),
+            checkbox("AP", target.autopilotEnabled, (checked) => post(`/targets/${encodeURIComponent(target.id)}/control`, { autopilotEnabled: checked }))
+          );
+          row.append(name, course, speed, gps, emergency, actions, toggles);
+          return row;
+        }));
+      }
+
+      function fillGpsSelect(select, value) {
+        if (!state?.gpsFaultModes) return;
+        if (select.options.length !== state.gpsFaultModes.length) {
+          select.replaceChildren(...state.gpsFaultModes.map((mode) => new Option(mode, mode)));
+        }
+        select.value = value || "normal";
+      }
+
+      function miniButton(text, fn) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = text;
+        button.addEventListener("click", fn);
+        return button;
+      }
+
+      function checkbox(label, checked, fn) {
+        const wrapper = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = checked;
+        input.addEventListener("change", () => fn(input.checked));
+        wrapper.append(input, label);
+        return wrapper;
+      }
+
+      function isEditing() {
+        return document.activeElement && document.activeElement.matches("input, select");
+      }
+
+      function handleKeyboardControls(event) {
+        if (isEditing() || event.altKey || event.ctrlKey || event.metaKey) return;
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          post("/own/heading", { direction: "left" });
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          post("/own/heading", { direction: "right" });
+        } else if (event.key === "ArrowDown") {
+          event.preventDefault();
+          post("/own/speed", { direction: "down" });
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          post("/own/speed", { direction: "up" });
+        }
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          "\"": "&quot;",
+          "'": "&#39;"
+        })[char]);
+      }
+
+      els.outputEnabled.addEventListener("change", () => post("/output", { enabled: els.outputEnabled.checked }));
+      els.ownGpsFault.addEventListener("change", () => post("/own/controls", { gpsFaultMode: els.ownGpsFault.value }));
+      els.ownHeadingEnabled.addEventListener("change", () => post("/own/controls", { headingEnabled: els.ownHeadingEnabled.checked }));
+      els.ownHeading.addEventListener("change", () => post("/own/controls", { headingDeg: Number(els.ownHeading.value) }));
+      els.ownSpeed.addEventListener("change", () => post("/own/controls", { speedKn: Number(els.ownSpeed.value) }));
+      els.ownLegDuration.addEventListener("change", () => post("/own/controls", { legDuration: Number(els.ownLegDuration.value) }));
+      els.ownAutopilot.addEventListener("change", () => post("/own/autopilot", { enabled: els.ownAutopilot.checked }));
+      els.resetOwn.addEventListener("click", () => post("/own/reset", {}));
+      document.querySelectorAll("[data-own-heading]").forEach((button) => button.addEventListener("click", () => post("/own/heading", { direction: button.dataset.ownHeading })));
+      document.querySelectorAll("[data-own-speed]").forEach((button) => button.addEventListener("click", () => post("/own/speed", { direction: button.dataset.ownSpeed })));
+      document.addEventListener("keydown", handleKeyboardControls);
+      for (const [element, key, bool] of [
+        [els.depthM, "depthM"], [els.windSpeed, "apparentWindSpeedKn"], [els.windAngle, "apparentWindAngleDeg"],
+        [els.currentDrift, "currentDriftKn"], [els.currentSet, "currentSetDeg"], [els.engineTemp, "engineRoomTemperatureC"],
+        [els.depthVarying, "depthVarying", true], [els.windVarying, "windVarying", true], [els.currentVarying, "currentVarying", true]
+      ]) {
+        element.addEventListener("change", () => post("/environment", { [key]: bool ? element.checked : Number(element.value) }));
+      }
+      els.refresh.addEventListener("click", () => refresh());
+
+      async function refresh() {
+        try {
+          if (!isEditing()) render(await request("/state"));
+        } catch (error) {
+          els.status.textContent = error.message;
+        }
+      }
+
+      refresh();
+      setInterval(refresh, 3000);
+    </script>
+  </body>
+</html>
