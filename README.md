@@ -3,7 +3,7 @@
 > **Alpha Release disclaimer:** This software is Alpha Release and must not be
 > relied upon for navigation or safety.
 
-Unified Signal K simulator for AJRM Marine/AJRM Marine testing.
+Unified Signal K simulator for AJRM Marine Suite testing.
 
 This plugin replaces running `signalk-self-track-simulator` and
 `signalk-vessel-simulator` at the same time. It uses one Signal K source,
@@ -16,6 +16,11 @@ The simulator has a master **Start simulator output** switch. When output is
 off, the web controls remain available but no simulated Signal K deltas are
 published. Output always starts off after a plugin or Signal K restart, even if
 it was enabled during the previous run.
+
+Web-control settings such as own-vessel heading/STW, GNSS fault mode,
+environment values, target switches, and target fault modes are remembered
+across Signal K restarts. Use **Reset defaults** to clear those saved runtime
+settings and return to the configured/default simulator setup.
 
 Leave output off when sailing for real.
 
@@ -44,9 +49,9 @@ while **Start simulator output** is off. After a Signal K restart the simulator
 therefore remains at the active configured/default start position until output
 is deliberately enabled.
 
-Version `0.1.9` starts own boat at the Craobh default unless a configured start
-position is explicitly enabled. The Reset button/API route returns own boat to
-the active configured/default start position during testing.
+Version `0.5.3` remembers simulator web-control settings across Signal K
+restarts. **Reset defaults** clears those saved runtime settings and restores
+the configured/default own boat, environment, and AIS target controls.
 
 Version `0.1.8` treats own-vessel GPS loss as loss of GPS-derived position,
 SOG, and COG. It still publishes heading, STW, current/tide, wind, and depth so
@@ -67,7 +72,7 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+ssh://git@ssh.github.com:443/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.1 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.3 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

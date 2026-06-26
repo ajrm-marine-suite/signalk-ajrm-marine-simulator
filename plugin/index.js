@@ -6,6 +6,10 @@
  * each other the way separate own-track and target simulators can.
  */
 
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+
 const packageInfo = require('../package.json')
 
 const EARTH_RADIUS_M = 6371000
@@ -16,6 +20,8 @@ const DEFAULT_PERIOD_SECONDS = 1
 const DEFAULT_LEG_SECONDS = 300
 const MAX_RUDDER_DEG = 35
 const DEFAULT_ROUTE_RUDDER_DEG = 30
+const RUNTIME_SETTINGS_VERSION = 1
+const RUNTIME_SETTINGS_FILE_ENV = 'AJRM_MARINE_SIMULATOR_SETTINGS_FILE'
 const TURN_RATE_PER_RUDDER_DEG_PER_SECOND = 0.08
 const AIS_NAV_STATUS_ACTIVE_SART = 14
 const GPS_FAULT_MODES = ['normal', 'degraded', 'lost', 'jump', 'spoof', 'intermittent']
@@ -57,6 +63,7 @@ module.exports = function ajrmMarineSimulator(app) {
   let timer = null
   let lastTickMs = null
   let startedAtMs = 0
+  let startupProps = {}
 
   plugin.id = 'signalk-ajrm-marine-simulator'
   plugin.name = 'AJRM Marine Simulator'
@@ -67,7 +74,8 @@ module.exports = function ajrmMarineSimulator(app) {
 
   plugin.start = function start(props = {}) {
     plugin.stop()
-    cfg = normalizeConfig(props)
+    startupProps = props || {}
+    cfg = normalizeConfig(mergeRuntimeSettings(startupProps, loadRuntimeSettings()))
     own = initialOwn(cfg)
     env = initialEnvironment(cfg)
     targets = new Map(initialTargets(cfg).map((target) => [target.id, target]))
@@ -107,14 +115,15 @@ module.exports = function ajrmMarineSimulator(app) {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       const values = req.body || {}
       updateOwnControls(values)
+      saveRuntimeSettings()
       publishOwn({ includePosition: Object.prototype.hasOwnProperty.call(values, 'gpsFaultMode') })
       res.json(publicState())
     })
 
     router.post('/own/reset', (_req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
-      resetOwnToStartPosition()
-      publishOwn({ includePosition: true })
+      resetSimulatorToDefaults()
+      publishSnapshot({ includeStatic: true })
       res.json(publicState())
     })
 
@@ -122,6 +131,7 @@ module.exports = function ajrmMarineSimulator(app) {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       own.headingDeg = normalizeDeg(own.headingDeg + (req.body?.direction === 'left' ? -5 : 5))
       own.routeTurning = false
+      saveRuntimeSettings()
       publishOwn({ includePosition: false })
       res.json(publicState())
     })
@@ -129,6 +139,7 @@ module.exports = function ajrmMarineSimulator(app) {
     router.post('/own/speed', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       own.speedKn = clamp(own.speedKn + (req.body?.direction === 'down' ? -0.5 : 0.5), 0, 30, own.speedKn)
+      saveRuntimeSettings()
       publishOwn({ includePosition: false })
       res.json(publicState())
     })
@@ -138,12 +149,14 @@ module.exports = function ajrmMarineSimulator(app) {
       own.autopilotEnabled = req.body?.enabled === true
       own.routeTurning = false
       own.legStartMs = Date.now()
+      saveRuntimeSettings()
       res.json(publicState())
     })
 
     router.post('/environment', (req, res) => {
       if (!env) return res.status(409).json({ error: 'Simulator is not running' })
       updateEnvironment(req.body || {})
+      saveRuntimeSettings()
       publishOwn({ includePosition: false })
       res.json(publicState())
     })
@@ -151,6 +164,7 @@ module.exports = function ajrmMarineSimulator(app) {
     router.post('/targets/:id/control', (req, res) => {
       const target = updateTarget(req.params.id, req.body || {})
       if (!target) return res.status(404).json({ error: 'Unknown target' })
+      saveRuntimeSettings()
       publishTarget(target, true)
       res.json(publicState())
     })
@@ -426,18 +440,18 @@ module.exports = function ajrmMarineSimulator(app) {
     if (values.legDuration != null) own.legDuration = clamp(values.legDuration, 10, 86400, own.legDuration)
   }
 
-  function resetOwnToStartPosition() {
-    const start = ownStartPosition(cfg)
-    own.latitude = clamp(start.latitude, -90, 90, DEFAULT_BASE.latitude)
-    own.longitude = clamp(start.longitude, -180, 180, DEFAULT_BASE.longitude)
-    own.headingDeg = normalizeDeg(cfg?.own?.initialHeadingDeg ?? cfg?.own?.initialCourseDeg ?? 90)
-    own.speedKn = clamp(cfg?.own?.initialSpeedKn, 0, 30, 0)
-    own.routeTurning = false
-    own.routeTargetDeg = null
-    own.rateOfTurnDegPerSecond = 0
-    own.rudderAngleDeg = 0
-    own.legStartMs = Date.now()
-    own.gpsSpoofOffsetM = 0
+  function resetSimulatorToDefaults() {
+    const wasOutputEnabled = cfg?.outputEnabled === true
+    clearRuntimeSettings()
+    cfg = normalizeConfig(startupProps)
+    cfg.outputEnabled = wasOutputEnabled
+    own = initialOwn(cfg)
+    env = initialEnvironment(cfg)
+    targets = new Map(initialTargets(cfg).map((target) => [target.id, target]))
+    startedAtMs = Date.now()
+    lastTickMs = startedAtMs
+    resetAutopilotLegTimers()
+    setStatus()
   }
 
   function resetAutopilotLegTimers() {
@@ -568,6 +582,119 @@ module.exports = function ajrmMarineSimulator(app) {
       environment: props.environment || {},
       targets: Array.isArray(props.targets) ? props.targets : defaultTargetConfig(),
       fixedStations: Array.isArray(props.fixedStations) ? props.fixedStations : defaultFixedStationConfig()
+    }
+  }
+
+  function mergeRuntimeSettings(baseProps = {}, saved = null) {
+    if (!saved || saved.version !== RUNTIME_SETTINGS_VERSION) return baseProps
+    const merged = {
+      ...baseProps,
+      own: { ...(baseProps.own || {}), ...(saved.own || {}) },
+      environment: { ...(baseProps.environment || {}), ...(saved.environment || {}) }
+    }
+    if (saved.targetAutopilotEnabled != null) merged.targetAutopilotEnabled = saved.targetAutopilotEnabled === true
+    if (Array.isArray(saved.targets)) {
+      const baseTargets = Array.isArray(baseProps.targets) ? baseProps.targets : defaultTargetConfig()
+      merged.targets = mergeRuntimeTargetSettings(baseTargets, saved.targets)
+    }
+    if (Array.isArray(saved.fixedStations)) {
+      const baseStations = Array.isArray(baseProps.fixedStations) ? baseProps.fixedStations : defaultFixedStationConfig()
+      merged.fixedStations = mergeRuntimeTargetSettings(baseStations, saved.fixedStations)
+    }
+    return merged
+  }
+
+  function mergeRuntimeTargetSettings(baseTargets, savedTargets) {
+    const savedById = new Map(savedTargets.map((target) => [String(target.id || ''), target]))
+    return baseTargets.map((target) => {
+      const saved = savedById.get(String(target.id || ''))
+      return saved ? { ...target, ...saved } : target
+    })
+  }
+
+  function loadRuntimeSettings() {
+    const file = runtimeSettingsFile()
+    try {
+      if (!fs.existsSync(file)) return null
+      return JSON.parse(fs.readFileSync(file, 'utf8'))
+    } catch (error) {
+      app.debug?.(`Ignoring simulator runtime settings: ${error.message}`)
+      return null
+    }
+  }
+
+  function saveRuntimeSettings() {
+    if (!cfg || !own || !env) return
+    const file = runtimeSettingsFile()
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, `${JSON.stringify(runtimeSettingsFromState(), null, 2)}\n`)
+    } catch (error) {
+      app.setPluginError?.(`Unable to save simulator runtime settings: ${error.message}`)
+    }
+  }
+
+  function clearRuntimeSettings() {
+    try {
+      fs.rmSync(runtimeSettingsFile(), { force: true })
+    } catch (error) {
+      app.debug?.(`Unable to clear simulator runtime settings: ${error.message}`)
+    }
+  }
+
+  function runtimeSettingsFile() {
+    return process.env[RUNTIME_SETTINGS_FILE_ENV] ||
+      path.join(os.homedir(), '.signalk', 'plugin-config-data', `${plugin.id}-runtime.json`)
+  }
+
+  function runtimeSettingsFromState() {
+    const movingTargets = []
+    const fixedStations = []
+    for (const target of targets.values()) {
+      const targetSettings = {
+        id: target.id,
+        enabled: target.enabled,
+        gpsFaultMode: target.gpsFaultMode
+      }
+      if (target.isFixedStation) {
+        fixedStations.push(targetSettings)
+      } else {
+        movingTargets.push({
+          ...targetSettings,
+          autopilotEnabled: target.autopilotEnabled,
+          initialCourseDeg: round(target.courseDeg, 0),
+          speedKn: round(target.speedKn, 1),
+          legDuration: target.legDuration,
+          emergencyMode: target.emergencyMode?.id || target.emergencyMode || 'none'
+        })
+      }
+    }
+    return {
+      version: RUNTIME_SETTINGS_VERSION,
+      savedAt: new Date().toISOString(),
+      targetAutopilotEnabled: cfg.targetAutopilotEnabled === true,
+      own: {
+        initialHeadingDeg: round(own.headingDeg, 0),
+        initialSpeedKn: round(own.speedKn, 1),
+        headingEnabled: own.headingEnabled !== false,
+        autopilotEnabled: own.autopilotEnabled === true,
+        legDuration: own.legDuration,
+        gpsFaultMode: own.gpsFaultMode
+      },
+      environment: {
+        depthM: round(env.depthM, 1),
+        apparentWindSpeedKn: round(env.apparentWindSpeedKn, 1),
+        apparentWindAngleDeg: round(env.apparentWindAngleDeg, 0),
+        currentDriftKn: round(env.currentDriftKn, 1),
+        currentSetDeg: round(env.currentSetDeg, 0),
+        engineRoomTemperatureC: round(env.engineRoomTemperatureC, 1),
+        exhaustWaterTemperatureC: round(env.exhaustWaterTemperatureC, 1),
+        depthVarying: env.depthVarying,
+        windVarying: env.windVarying,
+        currentVarying: env.currentVarying
+      },
+      targets: movingTargets,
+      fixedStations
     }
   }
 
@@ -754,7 +881,7 @@ module.exports = function ajrmMarineSimulator(app) {
       aisFromCenter: 0,
       autopilotEnabled: false,
       emergencyMode: 'none',
-      gpsFaultMode: 'normal'
+      gpsFaultMode: GPS_FAULT_MODES.includes(raw.gpsFaultMode) ? raw.gpsFaultMode : 'normal'
     }
   }
 

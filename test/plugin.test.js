@@ -1,4 +1,7 @@
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
 const test = require('node:test')
 
 const createPlugin = require('../plugin')
@@ -12,6 +15,19 @@ const {
   offsetMeters,
   trueWindFromApparent
 } = createPlugin._test
+
+const runtimeSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ajrm-simulator-test-'))
+const runtimeSettingsFile = path.join(runtimeSettingsDir, 'runtime.json')
+process.env.AJRM_MARINE_SIMULATOR_SETTINGS_FILE = runtimeSettingsFile
+
+test.afterEach(() => {
+  fs.rmSync(runtimeSettingsFile, { force: true })
+})
+
+test.after(() => {
+  fs.rmSync(runtimeSettingsDir, { recursive: true, force: true })
+  delete process.env.AJRM_MARINE_SIMULATOR_SETTINGS_FILE
+})
 
 test('movement helpers use metre scale', () => {
   const moved = movePoint(DEFAULT_BASE.latitude, DEFAULT_BASE.longitude, 90, 100)
@@ -252,6 +268,130 @@ test('old configured start position is ignored unless explicitly enabled', () =>
     state = invoke(routes, 'POST', '/own/reset', {})
     assert.equal(state.own.latitude, 56.308558)
     assert.equal(state.own.longitude, -5.638818)
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('web control settings survive plugin restart while simulator output stays off', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 0 },
+      environment: { currentDriftKn: 1, currentSetDeg: 270, currentVarying: false }
+    })
+    invoke(routes, 'POST', '/output', { enabled: true })
+    invoke(routes, 'POST', '/own/controls', {
+      headingDeg: 245,
+      speedKn: 6.5,
+      headingEnabled: false,
+      gpsFaultMode: 'intermittent',
+      legDuration: 600
+    })
+    invoke(routes, 'POST', '/own/autopilot', { enabled: true })
+    invoke(routes, 'POST', '/environment', {
+      currentDriftKn: 2.4,
+      currentSetDeg: 112,
+      windVarying: false
+    })
+    invoke(routes, 'POST', '/targets/:id/control', {
+      enabled: false,
+      autopilotEnabled: false,
+      speedDirection: 'up',
+      rudderDirection: 'right',
+      gpsFaultMode: 'degraded'
+    }, { id: 'sim-1' })
+
+    plugin.stop()
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 0 },
+      environment: { currentDriftKn: 1, currentSetDeg: 270, currentVarying: false }
+    })
+
+    const state = invoke(routes, 'GET', '/state')
+    const target = state.targets.find((item) => item.id === 'sim-1')
+    assert.equal(state.outputEnabled, false)
+    assert.equal(state.own.headingDeg, 245)
+    assert.equal(state.own.speedKn, 6.5)
+    assert.equal(state.own.headingEnabled, false)
+    assert.equal(state.own.gpsFaultMode, 'intermittent')
+    assert.equal(state.own.autopilotEnabled, true)
+    assert.equal(state.own.legDuration, 600)
+    assert.equal(state.environment.currentDriftKn, 2.4)
+    assert.equal(state.environment.currentSetDeg, 112)
+    assert.equal(state.environment.windVarying, false)
+    assert.equal(target.enabled, false)
+    assert.equal(target.autopilotEnabled, false)
+    assert.equal(target.speedKn, 6.4)
+    assert.equal(target.courseDeg, 355)
+    assert.equal(target.gpsFaultMode, 'degraded')
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('reset clears saved simulator settings and restores configured defaults', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  const props = {
+    own: { initialHeadingDeg: 123, initialSpeedKn: 3.5, gpsFaultMode: 'normal' },
+    environment: { currentDriftKn: 0.4, currentSetDeg: 45, currentVarying: false },
+    targets: [
+      {
+        id: 'custom-ship',
+        enabled: true,
+        autopilotEnabled: true,
+        name: 'CUSTOM SHIP',
+        mmsi: '235900888',
+        startPosition: { latitude: 56.2, longitude: -5.6 },
+        initialCourseDeg: 80,
+        speedKn: 5,
+        legDuration: 300,
+        gpsFaultMode: 'normal'
+      }
+    ]
+  }
+  try {
+    plugin.start(props)
+    invoke(routes, 'POST', '/own/controls', { headingDeg: 270, speedKn: 9, gpsFaultMode: 'lost' })
+    invoke(routes, 'POST', '/environment', { currentDriftKn: 3.1, currentSetDeg: 180 })
+    invoke(routes, 'POST', '/targets/:id/control', {
+      enabled: false,
+      speedDirection: 'up',
+      rudderDirection: 'left',
+      gpsFaultMode: 'spoof'
+    }, { id: 'custom-ship' })
+    assert.equal(fs.existsSync(runtimeSettingsFile), true)
+
+    const reset = invoke(routes, 'POST', '/own/reset', {})
+    const target = reset.targets.find((item) => item.id === 'custom-ship')
+    assert.equal(reset.own.headingDeg, 123)
+    assert.equal(reset.own.speedKn, 3.5)
+    assert.equal(reset.own.gpsFaultMode, 'normal')
+    assert.equal(reset.environment.currentDriftKn, 0.4)
+    assert.equal(reset.environment.currentSetDeg, 45)
+    assert.equal(target.enabled, true)
+    assert.equal(target.speedKn, 5)
+    assert.equal(target.courseDeg, 80)
+    assert.equal(target.gpsFaultMode, 'normal')
+    assert.equal(fs.existsSync(runtimeSettingsFile), false)
+
+    plugin.stop()
+    plugin.start(props)
+    const restarted = invoke(routes, 'GET', '/state')
+    assert.equal(restarted.own.headingDeg, 123)
+    assert.equal(restarted.environment.currentDriftKn, 0.4)
   } finally {
     plugin.stop()
   }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.3
+
+- Remember simulator web-control settings across Signal K restarts while still starting with master output off.
+- Make Reset defaults clear saved runtime settings and restore the configured/default own boat, environment, and AIS target controls.
+
 ## 0.5.2
 
 - Reset own-vessel and AIS-target autopilot leg timers when simulator output is enabled, so routes wait the configured leg duration from simulation start rather than Signal K startup.
