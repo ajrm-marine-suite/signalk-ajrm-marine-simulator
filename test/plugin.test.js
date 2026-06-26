@@ -111,6 +111,52 @@ test('plugin publishes nothing while master output is off, then publishes own an
   plugin.stop()
 })
 
+test('turning master output off publishes a final quiet sample', () => {
+  const messages = []
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage(id, delta) {
+      messages.push({ id, delta })
+    }
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 8 },
+      environment: { currentSetDeg: 45, currentDriftKn: 2, currentVarying: false },
+      targets: [
+        {
+          id: 'test-target',
+          mmsi: '235900999',
+          name: 'TEST TARGET',
+          startPosition: { latitude: 56.16, longitude: -5.55 },
+          initialCourseDeg: 270,
+          speedKn: 4
+        }
+      ],
+      fixedStations: []
+    })
+    invoke(routes, 'POST', '/output', { enabled: true })
+    invoke(routes, 'POST', '/output', { enabled: false })
+
+    const ownValues = latestValuesByPath(messages, 'vessels.self')
+    assert.equal(ownValues['navigation.speedOverGround'], 0)
+    assert.equal(ownValues['navigation.speedThroughWater'], 0)
+    assert.equal(ownValues['environment.current.drift'], 0)
+    assert.equal(ownValues['environment.tide.drift'], 0)
+    assert.equal(ownValues['navigation.state'], 'stopped')
+
+    const targetValues = latestValuesByPath(messages, '235900999')
+    assert.equal(targetValues['navigation.position'], null)
+    assert.equal(targetValues['navigation.speedOverGround'], 0)
+    assert.equal(targetValues['navigation.state'], 'stopped')
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('plugin schema exposes editable AIS target and fixed station fleets', () => {
   const plugin = createPlugin({ setPluginStatus() {}, handleMessage() {} })
   const targetDefaults = plugin.schema.properties.targets.default

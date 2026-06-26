@@ -53,6 +53,11 @@ Version `0.5.3` remembers simulator web-control settings across Signal K
 restarts. **Reset defaults** clears those saved runtime settings and restores
 the configured/default own boat, environment, and AIS target controls.
 
+Version `0.5.4` publishes a final quiet sample when simulator output is stopped:
+own-vessel SOG/STW and current/tide drift go to zero, and simulated AIS target
+positions are cleared. This prevents Capture, Traffic, and Display from
+reacting to stale simulator movement after a test run ends.
+
 Version `0.1.8` treats own-vessel GPS loss as loss of GPS-derived position,
 SOG, and COG. It still publishes heading, STW, current/tide, wind, and depth so
 DR Plotter can test dead reckoning without other apps seeing pseudo-GPS
@@ -72,7 +77,7 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.3 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.4 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

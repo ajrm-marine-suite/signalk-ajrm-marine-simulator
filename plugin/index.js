@@ -102,7 +102,9 @@ module.exports = function ajrmMarineSimulator(app) {
     router.post('/output', (req, res) => {
       if (!cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const wasEnabled = cfg.outputEnabled
-      cfg.outputEnabled = req.body?.enabled === true
+      const nextEnabled = req.body?.enabled === true
+      if (wasEnabled && !nextEnabled) publishQuietSnapshot()
+      cfg.outputEnabled = nextEnabled
       if (!wasEnabled && cfg.outputEnabled) {
         resetAutopilotLegTimers()
         publishSnapshot({ includeStatic: true })
@@ -193,6 +195,21 @@ module.exports = function ajrmMarineSimulator(app) {
     for (const target of targets.values()) publishTarget(target, includeStatic)
   }
 
+  function publishQuietSnapshot() {
+    if (!cfg?.outputEnabled || !own) return false
+    app.handleMessage(plugin.id, {
+      context: 'vessels.self',
+      updates: [
+        {
+          $source: cfg.sourceName,
+          values: quietOwnValues()
+        }
+      ]
+    })
+    for (const target of targets.values()) publishQuietTarget(target)
+    return true
+  }
+
   function publishOwn({ includePosition = true } = {}) {
     if (!cfg?.outputEnabled || !own) return false
     app.handleMessage(plugin.id, {
@@ -254,6 +271,25 @@ module.exports = function ajrmMarineSimulator(app) {
     return values
   }
 
+  function quietOwnValues() {
+    const values = [
+      { path: 'navigation.courseOverGroundTrue', value: degToRad(own.headingDeg) },
+      { path: 'navigation.speedOverGround', value: 0 },
+      { path: 'navigation.speedThroughWater', value: 0 },
+      { path: 'navigation.rateOfTurn', value: 0 },
+      { path: 'steering.rudderAngle', value: 0 },
+      { path: 'navigation.state', value: 'stopped' },
+      { path: 'environment.current.setTrue', value: degToRad(env.currentSetDeg) },
+      { path: 'environment.current.drift', value: 0 },
+      { path: 'environment.tide.setTrue', value: degToRad(env.currentSetDeg) },
+      { path: 'environment.tide.drift', value: 0 },
+      { path: 'navigation.gnss.methodQuality', value: 'GNSS fix' },
+      { path: 'navigation.position', value: { latitude: own.latitude, longitude: own.longitude } }
+    ]
+    if (own.headingEnabled !== false) values.splice(1, 0, { path: 'navigation.headingTrue', value: degToRad(own.headingDeg) })
+    return values
+  }
+
   function ownGpsUnavailable() {
     const mode = GPS_FAULT_MODES.includes(own.gpsFaultMode) ? own.gpsFaultMode : 'normal'
     const seconds = (Date.now() - startedAtMs) / 1000
@@ -311,6 +347,26 @@ module.exports = function ajrmMarineSimulator(app) {
     app.handleMessage(plugin.id, {
       context: contextForTarget(target),
       updates: [{ $source: cfg.sourceName, values: targetDynamicValues(target) }]
+    })
+    return true
+  }
+
+  function publishQuietTarget(target) {
+    if (!target.enabled) return false
+    app.handleMessage(plugin.id, {
+      context: contextForTarget(target),
+      updates: [
+        {
+          $source: cfg.sourceName,
+          values: [
+            { path: 'navigation.position', value: null },
+            { path: 'navigation.speedOverGround', value: 0 },
+            { path: 'navigation.rateOfTurn', value: 0 },
+            { path: 'steering.rudderAngle', value: 0 },
+            { path: 'navigation.state', value: target.isFixedStation ? 'baseStation' : 'stopped' }
+          ]
+        }
+      ]
     })
     return true
   }

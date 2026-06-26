@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.4
+
+- Publish a final quiet own-vessel/environment sample when simulator output is stopped, so downstream apps do not keep reacting to stale simulated motion or tide.
+- Clear simulated AIS target positions when simulator output is stopped, reducing lingering traffic alerts after a test run ends.
+
 ## 0.5.3
 
 - Remember simulator web-control settings across Signal K restarts while still starting with master output off.
