@@ -7,7 +7,7 @@ Unified Signal K simulator for AJRM Marine Suite testing.
 
 This plugin replaces running `signalk-self-track-simulator` and
 `signalk-vessel-simulator` at the same time. It uses one Signal K source,
-`watchkeeper-simulator`, so simulated own-vessel values and simulated AIS
+`ajrm-marine-simulator`, so simulated own-vessel values and simulated AIS
 targets do not fight each other.
 
 ## Safety Switch

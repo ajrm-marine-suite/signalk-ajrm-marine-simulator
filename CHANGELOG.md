@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.5
+
+- Rename the default simulated Signal K source to `ajrm-marine-simulator`.
+
 ## 0.5.4
 
 - Publish a final quiet own-vessel/environment sample when simulator output is stopped, so downstream apps do not keep reacting to stale simulated motion or tide.

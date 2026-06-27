@@ -629,7 +629,7 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function normalizeConfig(props = {}) {
     return {
-      sourceName: String(props.sourceName || 'watchkeeper-simulator'),
+      sourceName: String(props.sourceName || 'ajrm-marine-simulator'),
       outputEnabled: false,
       targetAutopilotEnabled: props.targetAutopilotEnabled !== false,
       outputPeriod: clamp(props.outputPeriod, 0.2, 10, DEFAULT_PERIOD_SECONDS),
@@ -1012,7 +1012,7 @@ module.exports = function ajrmMarineSimulator(app) {
           description: 'Leave OFF while sailing for real. When OFF no simulated Signal K deltas are published.',
           default: false
         },
-        sourceName: { type: 'string', title: 'Signal K source name', default: 'watchkeeper-simulator' },
+        sourceName: { type: 'string', title: 'Signal K source name', default: 'ajrm-marine-simulator' },
         outputPeriod: { type: 'number', title: 'Simulation tick period (seconds)', default: DEFAULT_PERIOD_SECONDS },
         targetAutopilotEnabled: { type: 'boolean', title: 'Master AIS target autopilot routes', default: true },
         routeTurnRudderAngleDeg: { type: 'number', title: 'Route turn rudder angle', default: DEFAULT_ROUTE_RUDDER_DEG },
