@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.6
+
+- Remove obsolete suite naming from package metadata and README text.
+
 ## 0.5.5
 
 - Rename the default simulated Signal K source to `ajrm-marine-simulator`.
