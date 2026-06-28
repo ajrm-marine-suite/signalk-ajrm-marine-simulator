@@ -105,9 +105,10 @@ test('web app exposes bulk AIS target controls', () => {
   assert.match(html, /function setAllTargets\(enabled\)/)
 })
 
-test('web app labels manual state refresh clearly', () => {
-  assert.match(html, /id="refresh" type="button">Update now</)
-  assert.match(html, /els\.refresh\.addEventListener\("click", \(\) => refresh\(\)\)/)
+test('web app relies on automatic state refresh without a manual update button', () => {
+  assert.match(html, /setInterval\(refresh, 5000\)/)
+  assert.doesNotMatch(html, /id="refresh"/)
+  assert.doesNotMatch(html, />Update now</)
 })
 
 test('web app labels auto-reverse without autopilot wording', () => {

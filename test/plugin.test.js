@@ -554,6 +554,40 @@ test('own vessel motion mode route switches stationary, self steering and GPX ro
   }
 })
 
+test('own reset works from every own vessel motion mode', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 123, initialSpeedKn: 3.5 }
+    })
+    invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Reset route',
+      points: [
+        { latitude: 56.300000, longitude: -5.700000 },
+        { latitude: 56.301000, longitude: -5.700000 }
+      ]
+    })
+
+    for (const mode of ['stationary', 'self', 'route']) {
+      invoke(routes, 'POST', '/own/motion-mode', { mode })
+      invoke(routes, 'POST', '/own/controls', { headingDeg: 270, speedKn: 9, gpsFaultMode: 'lost' })
+      const state = invoke(routes, 'POST', '/own/reset', {})
+      assert.equal(state.own.headingDeg, 123)
+      assert.equal(state.own.speedKn, 3.5)
+      assert.equal(state.own.gpsFaultMode, 'normal')
+      assert.equal(state.own.motionMode, 'self')
+    }
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('web control settings survive plugin restart while simulator output stays off', () => {
   const routes = new Map()
   const app = {

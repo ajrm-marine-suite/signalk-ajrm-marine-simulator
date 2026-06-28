@@ -334,7 +334,7 @@
 
       .own-strip {
         display: grid;
-        grid-template-columns: repeat(2, minmax(180px, 1fr));
+        grid-template-columns: repeat(3, minmax(160px, 1fr));
         gap: 7px;
         padding: 7px;
       }
@@ -378,11 +378,6 @@
         grid-template-columns: 28px 1fr 28px;
         gap: 4px;
         align-items: center;
-      }
-
-      .stack {
-        display: grid;
-        gap: 4px;
       }
 
       @media (max-width: 1100px) {
@@ -561,8 +556,8 @@
               <div class="hint">Use Lost/Intermittent for DR testing</div>
               <div id="gnssSummary" class="hint">GPS, GLONASS, Galileo, BeiDou varied</div>
             </div>
-            <div class="own-card stack">
-              <button id="refresh" type="button">Update now</button>
+            <div class="own-card">
+              <h3>Defaults</h3>
               <button id="resetOwn" type="button">Reset defaults</button>
             </div>
           </section>
@@ -618,8 +613,7 @@
         ownGpsFault: document.getElementById("ownGpsFault"),
         ownAutopilot: document.getElementById("ownAutopilot"),
         ownLegDuration: document.getElementById("ownLegDuration"),
-        resetOwn: document.getElementById("resetOwn"),
-        refresh: document.getElementById("refresh")
+        resetOwn: document.getElementById("resetOwn")
       };
       let state = null;
 
@@ -885,7 +879,6 @@
       ]) {
         element.addEventListener("change", () => post("/environment", { [key]: bool ? element.checked : Number(element.value) }));
       }
-      els.refresh.addEventListener("click", () => refresh());
 
       async function loadGpxFile() {
         const file = els.gpxFile.files && els.gpxFile.files[0];

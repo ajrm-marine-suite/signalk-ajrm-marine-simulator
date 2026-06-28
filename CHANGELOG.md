@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.19
+
+- Remove the manual `Update now` button from the simulator web app; automatic
+  state refresh remains active.
+- Make `Reset defaults` a normal-sized common control.
+- Add coverage confirming own-vessel reset works from Stationary, Self
+  steering, and GPX route modes.
+
 ## 0.5.18
 
 - Split Own Vessel controls into Stationary, Self steering, and GPX route
