@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.17
+
+- Rename the manual state refresh control to `Update now`.
+- Replace AIS target left/right text buttons with left/right arrow controls.
+- Replace environment variation enable/disable buttons with one checkbox-style
+  control.
+
 ## 0.5.16
 
 - Rework own-vessel control around explicit Stationary, Self steering, and

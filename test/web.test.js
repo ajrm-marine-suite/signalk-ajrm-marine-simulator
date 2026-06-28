@@ -79,18 +79,29 @@ test('web app controls environment variation', () => {
   assert.match(html, /id="depthVarying"/)
   assert.match(html, /id="windVarying"/)
   assert.match(html, /id="currentVarying"/)
-  assert.match(html, /id="enableEnvironmentVariation"/)
-  assert.match(html, /id="disableEnvironmentVariation"/)
+  assert.match(html, /id="environmentVariationEnabled"/)
+  assert.match(html, /Vary depth, wind and tide/)
+  assert.doesNotMatch(html, /Enable variation/)
+  assert.doesNotMatch(html, /Disable variation/)
   assert.match(html, /function setEnvironmentVariation\(enabled\)/)
 })
 
 test('web app exposes bulk AIS target controls', () => {
   assert.match(html, /Let AIS vessels make automatic turns/)
   assert.match(html, /checkbox\("AR"/)
+  assert.match(html, /miniButton\("←"/)
+  assert.match(html, /miniButton\("→"/)
+  assert.doesNotMatch(html, /miniButton\("L"/)
+  assert.doesNotMatch(html, /miniButton\("R"/)
   assert.match(html, /id="enableAllTargets"/)
   assert.match(html, /id="disableAllTargets"/)
   assert.match(html, /\/targets\/autopilot/)
   assert.match(html, /function setAllTargets\(enabled\)/)
+})
+
+test('web app labels manual state refresh clearly', () => {
+  assert.match(html, /id="refresh" type="button">Update now</)
+  assert.match(html, /els\.refresh\.addEventListener\("click", \(\) => refresh\(\)\)/)
 })
 
 test('web app labels auto-reverse without autopilot wording', () => {

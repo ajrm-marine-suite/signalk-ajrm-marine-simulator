@@ -419,8 +419,10 @@
                   <input id="environmentEnabled" type="checkbox">
                   Publish simulated environment
                 </label>
-                <button id="enableEnvironmentVariation" type="button">Enable variation</button>
-                <button id="disableEnvironmentVariation" type="button">Disable variation</button>
+                <label class="inline-toggle">
+                  <input id="environmentVariationEnabled" type="checkbox">
+                  Vary depth, wind and tide
+                </label>
               </div>
             </div>
           <div class="field-grid">
@@ -517,7 +519,7 @@
               <label>Reverse after seconds <input id="ownLegDuration" type="number" min="10" step="10"></label>
             </div>
             <div class="own-card stack">
-              <button id="refresh" type="button">Refresh</button>
+              <button id="refresh" type="button">Update now</button>
               <button id="resetOwn" type="button">Reset defaults</button>
             </div>
           </section>
@@ -546,8 +548,7 @@
         currentSet: document.getElementById("currentSet"),
         engineTemp: document.getElementById("engineTemp"),
         environmentEnabled: document.getElementById("environmentEnabled"),
-        enableEnvironmentVariation: document.getElementById("enableEnvironmentVariation"),
-        disableEnvironmentVariation: document.getElementById("disableEnvironmentVariation"),
+        environmentVariationEnabled: document.getElementById("environmentVariationEnabled"),
         depthVarying: document.getElementById("depthVarying"),
         windVarying: document.getElementById("windVarying"),
         currentVarying: document.getElementById("currentVarying"),
@@ -663,6 +664,7 @@
         els.depthVarying.checked = env.depthVarying;
         els.windVarying.checked = env.windVarying;
         els.currentVarying.checked = env.currentVarying;
+        els.environmentVariationEnabled.checked = env.depthVarying && env.windVarying && env.currentVarying;
       }
 
       function renderTargets(targets, modes) {
@@ -689,8 +691,8 @@
           actions.append(
             miniButton("-", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { speedDirection: "down" })),
             miniButton("+", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { speedDirection: "up" })),
-            miniButton("L", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { rudderDirection: "left" })),
-            miniButton("R", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { rudderDirection: "right" }))
+            miniButton("←", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { rudderDirection: "left" })),
+            miniButton("→", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { rudderDirection: "right" }))
           );
           const toggles = document.createElement("div");
           toggles.className = "target-toggles";
@@ -797,8 +799,7 @@
       els.enableAllTargets.addEventListener("click", () => setAllTargets(true));
       els.disableAllTargets.addEventListener("click", () => setAllTargets(false));
       els.environmentEnabled.addEventListener("change", () => post("/environment", { enabled: els.environmentEnabled.checked }));
-      els.enableEnvironmentVariation.addEventListener("click", () => setEnvironmentVariation(true));
-      els.disableEnvironmentVariation.addEventListener("click", () => setEnvironmentVariation(false));
+      els.environmentVariationEnabled.addEventListener("change", () => setEnvironmentVariation(els.environmentVariationEnabled.checked));
       els.ownGpsFault.addEventListener("change", () => post("/own/controls", { gpsFaultMode: els.ownGpsFault.value }));
       els.ownHeadingEnabled.addEventListener("change", () => post("/own/controls", { headingEnabled: els.ownHeadingEnabled.checked }));
       els.ownHeading.addEventListener("change", () => post("/own/controls", { headingDeg: Number(els.ownHeading.value) }));
