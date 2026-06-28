@@ -215,6 +215,13 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
+    router.post('/targets/autopilot', (req, res) => {
+      if (!cfg) return res.status(409).json({ error: 'Simulator is not running' })
+      cfg.targetAutopilotEnabled = req.body?.enabled === true
+      saveRuntimeSettings()
+      res.json(publicState())
+    })
+
     router.post('/targets/:id/control', (req, res) => {
       const target = updateTarget(req.params.id, req.body || {})
       if (!target) return res.status(404).json({ error: 'Unknown target' })
@@ -279,14 +286,7 @@ module.exports = function ajrmMarineSimulator(app) {
   function ownValues({ includePosition = true } = {}) {
     const gps = ownGpsValues({ includePosition })
     const gpsUnavailable = ownGpsUnavailable()
-    const depthBelowKeelM = Math.max(0, env.depthM + env.transducerToKeelM)
     const motion = ownGroundMotion()
-    const wind = trueWindFromApparent({
-      courseDeg: own.headingDeg,
-      speedKn: own.speedKn,
-      apparentWindAngleDeg: env.apparentWindAngleDeg,
-      apparentWindSpeedKn: env.apparentWindSpeedKn
-    })
     const values = [
       {
         path: 'navigation.courseOverGroundTrue',
@@ -299,7 +299,26 @@ module.exports = function ajrmMarineSimulator(app) {
       { path: 'navigation.speedThroughWater', value: own.speedKn * KNOTS_TO_MPS },
       { path: 'navigation.rateOfTurn', value: rawDegToRad(own.rateOfTurnDegPerSecond || 0) },
       { path: 'steering.rudderAngle', value: rawDegToRad(own.rudderAngleDeg || 0) },
-      { path: 'navigation.state', value: own.speedKn > 0 ? 'underWay' : 'stopped' },
+      { path: 'navigation.state', value: own.speedKn > 0 ? 'underWay' : 'stopped' }
+    ]
+    values.push(...environmentValues())
+    if (own.headingEnabled !== false) values.splice(1, 0, { path: 'navigation.headingTrue', value: degToRad(own.headingDeg) })
+    values.push(...gps)
+    return values
+  }
+
+  function environmentValues() {
+    if (env.enabled === false) {
+      return environmentPaths().map((path) => ({ path, value: null }))
+    }
+    const depthBelowKeelM = Math.max(0, env.depthM + env.transducerToKeelM)
+    const wind = trueWindFromApparent({
+      courseDeg: own.headingDeg,
+      speedKn: own.speedKn,
+      apparentWindAngleDeg: env.apparentWindAngleDeg,
+      apparentWindSpeedKn: env.apparentWindSpeedKn
+    })
+    return [
       { path: 'environment.depth.belowTransducer', value: env.depthM },
       { path: 'environment.depth.transducerToKeel', value: env.transducerToKeelM },
       { path: 'environment.depth.belowKeel', value: depthBelowKeelM },
@@ -318,9 +337,28 @@ module.exports = function ajrmMarineSimulator(app) {
       { path: 'electrical.batteries.house.voltage', value: env.batteryVoltage },
       { path: 'electrical.batteries.house.current', value: env.batteryCurrent }
     ]
-    if (own.headingEnabled !== false) values.splice(1, 0, { path: 'navigation.headingTrue', value: degToRad(own.headingDeg) })
-    values.push(...gps)
-    return values
+  }
+
+  function environmentPaths() {
+    return [
+      'environment.depth.belowTransducer',
+      'environment.depth.transducerToKeel',
+      'environment.depth.belowKeel',
+      'environment.wind.speedApparent',
+      'environment.wind.angleApparent',
+      'environment.wind.speedOverGround',
+      'environment.wind.speedTrue',
+      'environment.wind.directionTrue',
+      'environment.wind.angleTrueGround',
+      'environment.current.setTrue',
+      'environment.current.drift',
+      'environment.tide.setTrue',
+      'environment.tide.drift',
+      'environment.inside.engineRoom.temperature',
+      'propulsion.main.temperature',
+      'electrical.batteries.house.voltage',
+      'electrical.batteries.house.current'
+    ]
   }
 
   function quietOwnValues() {
@@ -349,11 +387,12 @@ module.exports = function ajrmMarineSimulator(app) {
   }
 
   function ownGroundMotion() {
+    const currentDriftKn = env.enabled === false ? 0 : env.currentDriftKn
     return groundMotionForHeading({
       headingDeg: own.headingDeg,
       speedThroughWaterKn: own.speedKn,
       currentSetDeg: env.currentSetDeg,
-      currentDriftKn: env.currentDriftKn
+      currentDriftKn
     })
   }
 
@@ -644,6 +683,7 @@ module.exports = function ajrmMarineSimulator(app) {
     for (const key of ['depthVarying', 'windVarying', 'currentVarying']) {
       if (values[key] != null) env[key] = values[key] === true
     }
+    if (values.enabled != null) env.enabled = values.enabled === true
     env.baseDepthM = env.depthM
     env.baseApparentWindSpeedKn = env.apparentWindSpeedKn
     env.baseApparentWindAngleDeg = env.apparentWindAngleDeg
@@ -696,6 +736,7 @@ module.exports = function ajrmMarineSimulator(app) {
         gpxRoute: publicGpxRoute(own.gpxRoute, own.gpxRouteIndex)
       } : null,
       environment: env ? {
+        enabled: env.enabled !== false,
         depthM: round(env.depthM, 1),
         depthBelowKeelM: round(Math.max(0, env.depthM + env.transducerToKeelM), 1),
         apparentWindSpeedKn: round(env.apparentWindSpeedKn, 1),
@@ -854,6 +895,7 @@ module.exports = function ajrmMarineSimulator(app) {
         gpxRouteIndex: clampInteger(own.gpxRouteIndex, 0, Math.max(0, (own.gpxRoute?.points.length || 1) - 1), 0)
       },
       environment: {
+        enabled: env.enabled !== false,
         depthM: round(env.depthM, 1),
         apparentWindSpeedKn: round(env.apparentWindSpeedKn, 1),
         apparentWindAngleDeg: round(env.apparentWindAngleDeg, 0),
@@ -956,6 +998,7 @@ module.exports = function ajrmMarineSimulator(app) {
   function initialEnvironment(config) {
     const input = config.environment || {}
     const state = {
+      enabled: input.enabled !== false,
       depthM: clamp(input.depthM, 0, 250, 8),
       transducerToKeelM: clamp(input.transducerToKeelM, -20, 20, -0.8),
       apparentWindSpeedKn: clamp(input.apparentWindSpeedKn, 0, 80, 12),
@@ -1212,6 +1255,7 @@ module.exports = function ajrmMarineSimulator(app) {
           type: 'object',
           title: 'Environment startup',
           properties: {
+            enabled: { type: 'boolean', title: 'Publish simulated environment', default: true },
             depthM: { type: 'number', title: 'Depth below transducer', default: 8 },
             apparentWindSpeedKn: { type: 'number', title: 'Apparent wind speed', default: 12 },
             apparentWindAngleDeg: { type: 'number', title: 'Apparent wind angle', default: -90 },

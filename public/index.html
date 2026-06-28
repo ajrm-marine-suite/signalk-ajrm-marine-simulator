@@ -47,6 +47,27 @@
         padding: 8px;
       }
 
+      .status-box {
+        min-width: 104px;
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 12px;
+        border: 1px solid #53636b;
+        border-radius: 7px;
+        background: #2d2225;
+        color: #ffd5dc;
+        font-weight: 850;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+
+      .status-box.running {
+        background: #173323;
+        color: #c8ffd5;
+      }
+
       .master {
         display: inline-flex;
         align-items: center;
@@ -118,6 +139,18 @@
         display: flex;
         flex-wrap: wrap;
         gap: 7px;
+      }
+
+      .inline-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 34px;
+        padding: 0 9px;
+        border: 1px solid #40545d;
+        border-radius: 7px;
+        background: #121b1f;
+        color: #d7edf2;
       }
 
       .left-column {
@@ -309,13 +342,10 @@
         <p id="status" class="status">Loading...</p>
       </div>
       <div class="toolbar">
+        <div id="outputStatus" class="status-box">Stopped</div>
         <label id="masterLabel" class="master">
           <input id="outputEnabled" type="checkbox">
-          Start simulator output
-        </label>
-        <label>
-          Target autopilot
-          <input id="targetAutopilotEnabled" type="checkbox" disabled>
+          Run simulator
         </label>
       </div>
     </header>
@@ -332,6 +362,10 @@
           <div class="panel-header">
             <h2>AIS Vessels</h2>
             <div class="panel-actions">
+              <label class="inline-toggle">
+                <input id="targetAutopilotEnabled" type="checkbox">
+                Let AIS vessels make automatic turns
+              </label>
               <button id="enableAllTargets" type="button">Enable all</button>
               <button id="disableAllTargets" type="button">Disable all</button>
             </div>
@@ -346,6 +380,10 @@
             <div class="panel-header">
               <h2>Environment</h2>
               <div class="panel-actions">
+                <label class="inline-toggle">
+                  <input id="environmentEnabled" type="checkbox">
+                  Publish simulated environment
+                </label>
                 <button id="enableEnvironmentVariation" type="button">Enable variation</button>
                 <button id="disableEnvironmentVariation" type="button">Disable variation</button>
               </div>
@@ -376,7 +414,7 @@
           </div>
           <div class="button-row">
             <button id="saveStartPosition" type="button">Set start</button>
-            <button id="useCurrentStart" type="button">Use current</button>
+            <button id="useCurrentStart" type="button">Use current position</button>
           </div>
           <div class="hint">Saved across restarts. Reset defaults returns to the configured start.</div>
             </section>
@@ -404,7 +442,8 @@
                 <input id="ownHeading" type="number" min="0" max="359" step="1">
                 <button data-own-heading="right">+</button>
               </div>
-              <label><span><input id="ownHeadingEnabled" type="checkbox"> Publish heading</span></label>
+              <label><span><input id="ownHeadingEnabled" type="checkbox"> Simulate compass heading</span></label>
+              <div class="hint">Turn off to test systems that only receive COG/SOG.</div>
             </div>
             <div class="own-card">
               <h3>Speed</h3>
@@ -415,18 +454,15 @@
               </div>
             </div>
             <div class="own-card">
-              <h3>Own GPS</h3>
+              <h3>GPS / GNSS</h3>
               <select id="ownGpsFault"></select>
               <div class="hint">Use Lost/Intermittent for DR testing</div>
+              <div id="gnssSummary" class="hint">GPS, GLONASS, Galileo, BeiDou varied</div>
             </div>
             <div class="own-card">
               <h3>Autopilot</h3>
               <label><span><input id="ownAutopilot" type="checkbox"> Route autopilot</span></label>
               <label>Leg seconds <input id="ownLegDuration" type="number" min="10" step="10"></label>
-            </div>
-            <div class="own-card">
-              <h3>GNSS</h3>
-              <div id="gnssSummary" class="hint">GPS, GLONASS, Galileo, BeiDou varied</div>
             </div>
             <div class="own-card stack">
               <button id="refresh" type="button">Refresh</button>
@@ -441,6 +477,7 @@
       const apiBase = "/plugins/signalk-ajrm-marine-simulator";
       const els = {
         status: document.getElementById("status"),
+        outputStatus: document.getElementById("outputStatus"),
         outputEnabled: document.getElementById("outputEnabled"),
         masterLabel: document.getElementById("masterLabel"),
         targetAutopilotEnabled: document.getElementById("targetAutopilotEnabled"),
@@ -455,6 +492,7 @@
         currentDrift: document.getElementById("currentDrift"),
         currentSet: document.getElementById("currentSet"),
         engineTemp: document.getElementById("engineTemp"),
+        environmentEnabled: document.getElementById("environmentEnabled"),
         enableEnvironmentVariation: document.getElementById("enableEnvironmentVariation"),
         disableEnvironmentVariation: document.getElementById("disableEnvironmentVariation"),
         depthVarying: document.getElementById("depthVarying"),
@@ -503,6 +541,8 @@
         const enabledTargets = state.targets.filter((target) => target.enabled).length;
         els.outputEnabled.checked = state.outputEnabled;
         els.masterLabel.classList.toggle("on", state.outputEnabled);
+        els.outputStatus.textContent = state.outputEnabled ? "Running" : "Stopped";
+        els.outputStatus.classList.toggle("running", state.outputEnabled);
         els.targetAutopilotEnabled.checked = state.targetAutopilotEnabled;
         els.status.textContent = `${state.outputEnabled ? "PUBLISHING SIMULATED DATA" : "Simulation output OFF"} · ${enabledTargets} targets enabled · v${state.version}`;
 
@@ -539,6 +579,7 @@
 
       function renderEnvironment(env) {
         if (!env || isEditing()) return;
+        els.environmentEnabled.checked = env.enabled !== false;
         els.depthM.value = env.depthM.toFixed(1);
         els.windSpeed.value = env.apparentWindSpeedKn.toFixed(1);
         els.windAngle.value = env.apparentWindAngleDeg.toFixed(0);
@@ -677,8 +718,10 @@
 
       els.tabButtons.forEach((button) => button.addEventListener("click", () => selectTab(button.dataset.tab)));
       els.outputEnabled.addEventListener("change", () => post("/output", { enabled: els.outputEnabled.checked }));
+      els.targetAutopilotEnabled.addEventListener("change", () => post("/targets/autopilot", { enabled: els.targetAutopilotEnabled.checked }));
       els.enableAllTargets.addEventListener("click", () => setAllTargets(true));
       els.disableAllTargets.addEventListener("click", () => setAllTargets(false));
+      els.environmentEnabled.addEventListener("change", () => post("/environment", { enabled: els.environmentEnabled.checked }));
       els.enableEnvironmentVariation.addEventListener("click", () => setEnvironmentVariation(true));
       els.disableEnvironmentVariation.addEventListener("click", () => setEnvironmentVariation(false));
       els.ownGpsFault.addEventListener("change", () => post("/own/controls", { gpsFaultMode: els.ownGpsFault.value }));

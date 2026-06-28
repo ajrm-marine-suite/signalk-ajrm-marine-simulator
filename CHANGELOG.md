@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.15
+
+- Add a real simulated-environment enable switch; when disabled, simulated
+  depth, wind, current, temperature, and electrical paths are cleared and own
+  vessel no longer crabs in simulated current.
+- Move the AIS target automatic-turns control into the AIS Vessels tab and
+  label it as automatic turns.
+- Put the simulator run control and Running/Stopped status above the tabs.
+- Clarify own-vessel start and heading labels, and colocate GPS/GNSS controls.
+
 ## 0.5.14
 
 - Reorganise the simulator web app into top-level AIS Vessels, Environment,

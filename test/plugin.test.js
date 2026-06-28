@@ -235,6 +235,29 @@ test('configured AIS target fleet is used at startup', () => {
   }
 })
 
+test('target automatic turns can be toggled from the web route', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({ targetAutopilotEnabled: true })
+    let state = invoke(routes, 'GET', '/state')
+    assert.equal(state.targetAutopilotEnabled, true)
+
+    state = invoke(routes, 'POST', '/targets/autopilot', { enabled: false })
+    assert.equal(state.targetAutopilotEnabled, false)
+
+    state = invoke(routes, 'POST', '/targets/autopilot', { enabled: true })
+    assert.equal(state.targetAutopilotEnabled, true)
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('saved enabled config still starts with simulator output off', () => {
   const messages = []
   const routes = new Map()
@@ -661,6 +684,38 @@ test('own output publishes crabbing heading separately from COG', () => {
     assert.ok(byPath['navigation.courseOverGroundTrue'] > 0.19)
     assert.ok(byPath['navigation.courseOverGroundTrue'] < 0.21)
     assert.ok(byPath['navigation.speedOverGround'] > byPath['navigation.speedThroughWater'])
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('disabled environment clears simulated environment values and removes current from own motion', () => {
+  const messages = []
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage(id, delta) {
+      messages.push({ id, delta })
+    }
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 0, initialSpeedKn: 5 },
+      environment: { currentSetDeg: 90, currentDriftKn: 1, currentVarying: false }
+    })
+    invoke(routes, 'POST', '/environment', { enabled: false })
+    invoke(routes, 'POST', '/output', { enabled: true })
+    const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
+    const byPath = Object.fromEntries(self.delta.updates[0].values.map((item) => [item.path, item.value]))
+    assert.equal(byPath['environment.depth.belowTransducer'], null)
+    assert.equal(byPath['environment.wind.speedApparent'], null)
+    assert.equal(byPath['environment.current.drift'], null)
+    assert.equal(byPath['navigation.headingTrue'], 0)
+    assert.equal(byPath['navigation.courseOverGroundTrue'], 0)
+    assert.equal(byPath['navigation.speedOverGround'], byPath['navigation.speedThroughWater'])
+    assert.equal(invoke(routes, 'GET', '/state').environment.enabled, false)
   } finally {
     plugin.stop()
   }

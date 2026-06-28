@@ -7,11 +7,13 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'),
 
 test('web app exposes master output and own GPS fault controls', () => {
   assert.match(html, /id="outputEnabled"/)
-  assert.match(html, /Start simulator output/)
+  assert.match(html, /Run simulator/)
+  assert.match(html, /id="outputStatus"/)
   assert.match(html, /id="ownGpsFault"/)
   assert.match(html, /id="ownHeadingEnabled"/)
   assert.match(html, /id="resetOwn"/)
-  assert.match(html, /Publish heading/)
+  assert.match(html, /Simulate compass heading/)
+  assert.match(html, /only receive COG\/SOG/)
   assert.match(html, /Lost\/Intermittent for DR testing/)
   assert.match(html, /id="ownSpeed" type="number" min="0" max="999"/)
 })
@@ -32,6 +34,7 @@ test('web app exposes own boat start position controls', () => {
   assert.match(html, /id="startLongitude"/)
   assert.match(html, /id="saveStartPosition"/)
   assert.match(html, /id="useCurrentStart"/)
+  assert.match(html, /Use current position/)
   assert.match(html, /\/own\/start-position/)
 })
 
@@ -53,6 +56,8 @@ test('web app keeps target actions and toggles in separate columns', () => {
 })
 
 test('web app controls environment variation', () => {
+  assert.match(html, /id="environmentEnabled"/)
+  assert.match(html, /Publish simulated environment/)
   assert.match(html, /id="depthVarying"/)
   assert.match(html, /id="windVarying"/)
   assert.match(html, /id="currentVarying"/)
@@ -62,8 +67,10 @@ test('web app controls environment variation', () => {
 })
 
 test('web app exposes bulk AIS target controls', () => {
+  assert.match(html, /Let AIS vessels make automatic turns/)
   assert.match(html, /id="enableAllTargets"/)
   assert.match(html, /id="disableAllTargets"/)
+  assert.match(html, /\/targets\/autopilot/)
   assert.match(html, /function setAllTargets\(enabled\)/)
 })
 
