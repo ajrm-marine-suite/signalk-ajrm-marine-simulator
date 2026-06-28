@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.14
+
+- Reorganise the simulator web app into top-level AIS Vessels, Environment,
+  and Own Vessel tabs.
+- Add AIS target bulk enable/disable controls and environment variation
+  enable/disable controls.
+
 ## 0.5.13
 
 - Stabilise GPX route following at very high simulator speeds by breaking each

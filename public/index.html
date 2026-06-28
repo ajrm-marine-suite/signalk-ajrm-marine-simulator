@@ -17,7 +17,7 @@
       body {
         margin: 0;
         min-height: 100vh;
-        padding: 10px 12px 128px;
+        padding: 10px 12px 18px;
       }
 
       header {
@@ -69,7 +69,34 @@
         font-size: 12px;
       }
 
-      .grid {
+      .tab-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .tab-button {
+        min-width: 156px;
+        min-height: 38px;
+        border-color: #40545d;
+      }
+
+      .tab-button[aria-selected="true"] {
+        border-color: #37d3c6;
+        background: linear-gradient(#24565b, #1d3940);
+        color: #e9ffff;
+      }
+
+      .tab-panel {
+        display: none;
+      }
+
+      .tab-panel.active {
+        display: block;
+      }
+
+      .section-grid {
         display: grid;
         grid-template-columns: minmax(280px, 380px) 1fr;
         gap: 10px;
@@ -77,6 +104,20 @@
 
       .panel {
         padding: 10px;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+
+      .panel-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
       }
 
       .left-column {
@@ -147,7 +188,6 @@
       .targets {
         display: grid;
         gap: 7px;
-        margin-top: 8px;
       }
 
       .target {
@@ -196,16 +236,16 @@
       }
 
       .own-strip {
-        position: fixed;
-        left: 8px;
-        right: 8px;
-        bottom: 8px;
-        z-index: 20;
         display: grid;
-        grid-template-columns: minmax(210px, 1.4fr) repeat(5, minmax(108px, 1fr)) 112px;
+        grid-template-columns: repeat(3, minmax(180px, 1fr));
         gap: 7px;
         padding: 7px;
-        box-shadow: 0 -3px 16px rgba(0,0,0,.28);
+      }
+
+      .own-layout {
+        display: grid;
+        grid-template-columns: minmax(260px, 380px) 1fr;
+        gap: 10px;
       }
 
       .own-card {
@@ -249,10 +289,16 @@
       }
 
       @media (max-width: 1100px) {
-        body { padding-bottom: 260px; }
-        .grid { grid-template-columns: 1fr; }
+        .section-grid, .own-layout { grid-template-columns: 1fr; }
         .target { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .own-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+
+      @media (max-width: 680px) {
+        header { align-items: stretch; flex-direction: column; }
+        .toolbar { align-items: stretch; flex-direction: column; }
+        .tab-button { flex: 1 1 100%; }
+        .field-grid, .own-strip { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -274,10 +320,36 @@
       </div>
     </header>
 
-    <main class="grid">
-      <div class="left-column">
-        <section class="panel">
-          <h2>Environment</h2>
+    <nav class="tab-bar" aria-label="Simulator sections">
+      <button class="tab-button" type="button" data-tab="ais" aria-selected="false">AIS Vessels</button>
+      <button class="tab-button" type="button" data-tab="environment" aria-selected="false">Environment</button>
+      <button class="tab-button" type="button" data-tab="own" aria-selected="true">Own Vessel</button>
+    </nav>
+
+    <main>
+      <section id="tab-ais" class="tab-panel" data-tab-panel="ais" aria-label="AIS vessel simulator">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>AIS Vessels</h2>
+            <div class="panel-actions">
+              <button id="enableAllTargets" type="button">Enable all</button>
+              <button id="disableAllTargets" type="button">Disable all</button>
+            </div>
+          </div>
+          <div id="targets" class="targets"></div>
+        </div>
+      </section>
+
+      <section id="tab-environment" class="tab-panel" data-tab-panel="environment" aria-label="Environment simulator">
+        <div class="section-grid">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Environment</h2>
+              <div class="panel-actions">
+                <button id="enableEnvironmentVariation" type="button">Enable variation</button>
+                <button id="disableEnvironmentVariation" type="button">Disable variation</button>
+              </div>
+            </div>
           <div class="field-grid">
             <label>Depth m <input id="depthM" type="number" step="0.1"></label>
             <label>App wind kn <input id="windSpeed" type="number" step="0.1"></label>
@@ -289,9 +361,14 @@
             <label><span><input id="windVarying" type="checkbox"> Vary wind</span></label>
             <label><span><input id="currentVarying" type="checkbox"> Vary current/tide</span></label>
           </div>
-        </section>
+          </section>
+        </div>
+      </section>
 
-        <section class="panel">
+      <section id="tab-own" class="tab-panel active" data-tab-panel="own" aria-label="Own vessel simulator">
+        <div class="own-layout">
+          <div class="left-column">
+            <section class="panel">
           <h2>Own Boat Start</h2>
           <div class="field-grid">
             <label>Start lat <input id="startLatitude" type="number" step="0.000001"></label>
@@ -302,66 +379,63 @@
             <button id="useCurrentStart" type="button">Use current</button>
           </div>
           <div class="hint">Saved across restarts. Reset defaults returns to the configured start.</div>
-        </section>
+            </section>
 
-        <section class="panel">
+            <section class="panel">
           <h2>GPX Route</h2>
           <label>Load GPX file <input id="gpxFile" type="file" accept=".gpx,application/gpx+xml,text/xml"></label>
           <div class="button-row">
             <button id="clearGpxRoute" type="button">Clear GPX</button>
           </div>
           <div id="gpxStatus" class="route-status">No GPX route loaded.</div>
-        </section>
-      </div>
+            </section>
+          </div>
 
-      <section class="panel">
-        <h2>AIS Targets</h2>
-        <div id="targets" class="targets"></div>
+          <section class="own-strip" aria-label="Own boat controls">
+            <div class="own-card">
+              <h3>Own Boat</h3>
+              <div id="ownHeadingSpeed" class="reading">--- deg / --.- kn</div>
+              <div id="ownPosition" class="hint">--</div>
+            </div>
+            <div class="own-card">
+              <h3>Heading</h3>
+              <div class="adjust">
+                <button data-own-heading="left">-</button>
+                <input id="ownHeading" type="number" min="0" max="359" step="1">
+                <button data-own-heading="right">+</button>
+              </div>
+              <label><span><input id="ownHeadingEnabled" type="checkbox"> Publish heading</span></label>
+            </div>
+            <div class="own-card">
+              <h3>Speed</h3>
+              <div class="adjust">
+                <button data-own-speed="down">-</button>
+                <input id="ownSpeed" type="number" min="0" max="999" step="0.1">
+                <button data-own-speed="up">+</button>
+              </div>
+            </div>
+            <div class="own-card">
+              <h3>Own GPS</h3>
+              <select id="ownGpsFault"></select>
+              <div class="hint">Use Lost/Intermittent for DR testing</div>
+            </div>
+            <div class="own-card">
+              <h3>Autopilot</h3>
+              <label><span><input id="ownAutopilot" type="checkbox"> Route autopilot</span></label>
+              <label>Leg seconds <input id="ownLegDuration" type="number" min="10" step="10"></label>
+            </div>
+            <div class="own-card">
+              <h3>GNSS</h3>
+              <div id="gnssSummary" class="hint">GPS, GLONASS, Galileo, BeiDou varied</div>
+            </div>
+            <div class="own-card stack">
+              <button id="refresh" type="button">Refresh</button>
+              <button id="resetOwn" type="button">Reset defaults</button>
+            </div>
+          </section>
+        </div>
       </section>
     </main>
-
-    <section class="own-strip" aria-label="Own boat controls">
-      <div class="own-card">
-        <h3>Own Boat</h3>
-        <div id="ownHeadingSpeed" class="reading">--- deg / --.- kn</div>
-        <div id="ownPosition" class="hint">--</div>
-      </div>
-      <div class="own-card">
-        <h3>Heading</h3>
-        <div class="adjust">
-          <button data-own-heading="left">-</button>
-          <input id="ownHeading" type="number" min="0" max="359" step="1">
-          <button data-own-heading="right">+</button>
-        </div>
-        <label><span><input id="ownHeadingEnabled" type="checkbox"> Publish heading</span></label>
-      </div>
-      <div class="own-card">
-        <h3>Speed</h3>
-        <div class="adjust">
-          <button data-own-speed="down">-</button>
-          <input id="ownSpeed" type="number" min="0" max="999" step="0.1">
-          <button data-own-speed="up">+</button>
-        </div>
-      </div>
-      <div class="own-card">
-        <h3>Own GPS</h3>
-        <select id="ownGpsFault"></select>
-        <div class="hint">Use Lost/Intermittent for DR testing</div>
-      </div>
-      <div class="own-card">
-        <h3>Autopilot</h3>
-        <label><span><input id="ownAutopilot" type="checkbox"> Route autopilot</span></label>
-        <label>Leg seconds <input id="ownLegDuration" type="number" min="10" step="10"></label>
-      </div>
-      <div class="own-card">
-        <h3>GNSS</h3>
-        <div id="gnssSummary" class="hint">GPS, GLONASS, Galileo, BeiDou varied</div>
-      </div>
-      <div class="own-card stack">
-        <button id="refresh">Refresh</button>
-        <button id="resetOwn">Reset defaults</button>
-      </div>
-    </section>
 
     <script>
       const apiBase = "/plugins/signalk-ajrm-marine-simulator";
@@ -370,13 +444,19 @@
         outputEnabled: document.getElementById("outputEnabled"),
         masterLabel: document.getElementById("masterLabel"),
         targetAutopilotEnabled: document.getElementById("targetAutopilotEnabled"),
+        tabButtons: Array.from(document.querySelectorAll("[data-tab]")),
+        tabPanels: Array.from(document.querySelectorAll("[data-tab-panel]")),
         targets: document.getElementById("targets"),
+        enableAllTargets: document.getElementById("enableAllTargets"),
+        disableAllTargets: document.getElementById("disableAllTargets"),
         depthM: document.getElementById("depthM"),
         windSpeed: document.getElementById("windSpeed"),
         windAngle: document.getElementById("windAngle"),
         currentDrift: document.getElementById("currentDrift"),
         currentSet: document.getElementById("currentSet"),
         engineTemp: document.getElementById("engineTemp"),
+        enableEnvironmentVariation: document.getElementById("enableEnvironmentVariation"),
+        disableEnvironmentVariation: document.getElementById("disableEnvironmentVariation"),
         depthVarying: document.getElementById("depthVarying"),
         windVarying: document.getElementById("windVarying"),
         currentVarying: document.getElementById("currentVarying"),
@@ -508,6 +588,36 @@
         }));
       }
 
+      function selectTab(tabName) {
+        for (const button of els.tabButtons) {
+          button.setAttribute("aria-selected", button.dataset.tab === tabName ? "true" : "false");
+        }
+        for (const panel of els.tabPanels) {
+          panel.classList.toggle("active", panel.dataset.tabPanel === tabName);
+        }
+      }
+
+      async function setAllTargets(enabled) {
+        if (!state?.targets?.length) return;
+        try {
+          let next = state;
+          for (const target of state.targets) {
+            next = await request(`/targets/${encodeURIComponent(target.id)}/control`, { enabled });
+          }
+          render(next);
+        } catch (error) {
+          els.status.textContent = error.message;
+        }
+      }
+
+      function setEnvironmentVariation(enabled) {
+        post("/environment", {
+          depthVarying: enabled,
+          windVarying: enabled,
+          currentVarying: enabled
+        });
+      }
+
       function fillGpsSelect(select, value) {
         if (!state?.gpsFaultModes) return;
         if (select.options.length !== state.gpsFaultModes.length) {
@@ -565,7 +675,12 @@
         })[char]);
       }
 
+      els.tabButtons.forEach((button) => button.addEventListener("click", () => selectTab(button.dataset.tab)));
       els.outputEnabled.addEventListener("change", () => post("/output", { enabled: els.outputEnabled.checked }));
+      els.enableAllTargets.addEventListener("click", () => setAllTargets(true));
+      els.disableAllTargets.addEventListener("click", () => setAllTargets(false));
+      els.enableEnvironmentVariation.addEventListener("click", () => setEnvironmentVariation(true));
+      els.disableEnvironmentVariation.addEventListener("click", () => setEnvironmentVariation(false));
       els.ownGpsFault.addEventListener("change", () => post("/own/controls", { gpsFaultMode: els.ownGpsFault.value }));
       els.ownHeadingEnabled.addEventListener("change", () => post("/own/controls", { headingEnabled: els.ownHeadingEnabled.checked }));
       els.ownHeading.addEventListener("change", () => post("/own/controls", { headingDeg: Number(els.ownHeading.value) }));

@@ -16,6 +16,16 @@ test('web app exposes master output and own GPS fault controls', () => {
   assert.match(html, /id="ownSpeed" type="number" min="0" max="999"/)
 })
 
+test('web app groups simulator controls into top-level tabs', () => {
+  assert.match(html, /data-tab="ais"[\s\S]*AIS Vessels/)
+  assert.match(html, /data-tab="environment"[\s\S]*Environment/)
+  assert.match(html, /data-tab="own"[\s\S]*Own Vessel/)
+  assert.match(html, /data-tab-panel="ais"/)
+  assert.match(html, /data-tab-panel="environment"/)
+  assert.match(html, /data-tab-panel="own"/)
+  assert.match(html, /function selectTab\(tabName\)/)
+})
+
 test('web app exposes own boat start position controls', () => {
   assert.match(html, /Own Boat Start/)
   assert.match(html, /id="startLatitude"/)
@@ -46,6 +56,15 @@ test('web app controls environment variation', () => {
   assert.match(html, /id="depthVarying"/)
   assert.match(html, /id="windVarying"/)
   assert.match(html, /id="currentVarying"/)
+  assert.match(html, /id="enableEnvironmentVariation"/)
+  assert.match(html, /id="disableEnvironmentVariation"/)
+  assert.match(html, /function setEnvironmentVariation\(enabled\)/)
+})
+
+test('web app exposes bulk AIS target controls', () => {
+  assert.match(html, /id="enableAllTargets"/)
+  assert.match(html, /id="disableAllTargets"/)
+  assert.match(html, /function setAllTargets\(enabled\)/)
 })
 
 test('web app wires keyboard arrows to own boat controls', () => {
