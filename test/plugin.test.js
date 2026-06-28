@@ -350,6 +350,47 @@ test('web start position control persists and keeps output off after restart', (
   }
 })
 
+test('loaded GPX route starts own boat at first point and steers toward next point', async () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      outputPeriod: 0.2,
+      own: { initialHeadingDeg: 90, initialSpeedKn: 5 },
+      environment: { currentDriftKn: 0, currentVarying: false }
+    })
+    let state = invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Test route',
+      points: [
+        { latitude: 56.300000, longitude: -5.700000 },
+        { latitude: 56.301000, longitude: -5.700000 }
+      ]
+    })
+    assert.equal(state.outputEnabled, false)
+    assert.equal(state.own.latitude, 56.3)
+    assert.equal(state.own.longitude, -5.7)
+    assert.equal(state.own.gpxRoute.enabled, true)
+    assert.equal(state.own.gpxRoute.pointCount, 2)
+    assert.equal(state.own.gpxRoute.index, 1)
+
+    invoke(routes, 'POST', '/output', { enabled: true })
+    await delay(260)
+    state = invoke(routes, 'GET', '/state')
+    assert.ok(state.own.headingDeg < 5 || state.own.headingDeg > 355)
+
+    state = invoke(routes, 'POST', '/own/gpx-route/clear', {})
+    assert.equal(state.own.gpxRoute.pointCount, 0)
+    assert.equal(state.own.gpxRoute.enabled, false)
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('web control settings survive plugin restart while simulator output stays off', () => {
   const routes = new Map()
   const app = {

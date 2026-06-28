@@ -126,6 +126,11 @@
         min-height: auto;
       }
 
+      input[type="file"] {
+        padding: 4px;
+        font-size: 11px;
+      }
+
       button {
         padding: 4px 10px;
         background: linear-gradient(#304249, #202d32);
@@ -291,6 +296,15 @@
           </div>
           <div class="hint">Saved across restarts. Reset defaults returns to the configured start.</div>
         </section>
+
+        <section class="panel">
+          <h2>GPX Route</h2>
+          <label>Load GPX file <input id="gpxFile" type="file" accept=".gpx,application/gpx+xml,text/xml"></label>
+          <div class="button-row">
+            <button id="clearGpxRoute" type="button">Clear GPX</button>
+          </div>
+          <div id="gpxStatus" class="hint">No GPX route loaded.</div>
+        </section>
       </div>
 
       <section class="panel">
@@ -363,6 +377,9 @@
         startLongitude: document.getElementById("startLongitude"),
         saveStartPosition: document.getElementById("saveStartPosition"),
         useCurrentStart: document.getElementById("useCurrentStart"),
+        gpxFile: document.getElementById("gpxFile"),
+        clearGpxRoute: document.getElementById("clearGpxRoute"),
+        gpxStatus: document.getElementById("gpxStatus"),
         ownHeadingSpeed: document.getElementById("ownHeadingSpeed"),
         ownPosition: document.getElementById("ownPosition"),
         ownHeading: document.getElementById("ownHeading"),
@@ -421,6 +438,17 @@
           els.startLongitude.value = (own.startPosition?.longitude ?? own.longitude).toFixed(6);
           fillGpsSelect(els.ownGpsFault, own.gpsFaultMode);
         }
+        renderGpxRoute(own.gpxRoute);
+      }
+
+      function renderGpxRoute(route) {
+        if (!route || !route.pointCount) {
+          els.gpxStatus.textContent = "No GPX route loaded.";
+          return;
+        }
+        const name = route.name ? `${route.name} · ` : "";
+        const active = route.enabled ? "active" : route.completed ? "complete" : "paused";
+        els.gpxStatus.textContent = `${name}${route.pointCount} points · waypoint ${Math.min(route.index + 1, route.pointCount)} of ${route.pointCount} · ${active}`;
       }
 
       function renderEnvironment(env) {
@@ -546,6 +574,8 @@
         latitude: state.own.latitude,
         longitude: state.own.longitude
       }));
+      els.gpxFile.addEventListener("change", () => loadGpxFile());
+      els.clearGpxRoute.addEventListener("click", () => post("/own/gpx-route/clear", {}));
       els.resetOwn.addEventListener("click", () => post("/own/reset", {}));
       document.querySelectorAll("[data-own-heading]").forEach((button) => button.addEventListener("click", () => post("/own/heading", { direction: button.dataset.ownHeading })));
       document.querySelectorAll("[data-own-speed]").forEach((button) => button.addEventListener("click", () => post("/own/speed", { direction: button.dataset.ownSpeed })));
@@ -559,6 +589,32 @@
       }
       els.refresh.addEventListener("click", () => refresh());
 
+      async function loadGpxFile() {
+        const file = els.gpxFile.files && els.gpxFile.files[0];
+        if (!file) return;
+        try {
+          const points = parseGpxPoints(await file.text());
+          if (points.length === 0) throw new Error("No GPX route, track, or waypoint points found.");
+          await post("/own/gpx-route", {
+            name: file.name.replace(/\.gpx$/i, ""),
+            points
+          });
+          els.gpxFile.value = "";
+        } catch (error) {
+          els.status.textContent = error.message;
+        }
+      }
+
+      function parseGpxPoints(text) {
+        const doc = new DOMParser().parseFromString(text, "application/xml");
+        if (doc.querySelector("parsererror")) throw new Error("Could not read GPX file.");
+        const nodes = Array.from(doc.querySelectorAll("trkpt, rtept, wpt"));
+        return nodes.map((node) => ({
+          latitude: Number(node.getAttribute("lat")),
+          longitude: Number(node.getAttribute("lon"))
+        })).filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+      }
+
       async function refresh() {
         try {
           if (!isEditing()) render(await request("/state"));
@@ -568,7 +624,7 @@
       }
 
       refresh();
-      setInterval(refresh, 3000);
+      setInterval(refresh, 5000);
     </script>
   </body>
 </html>

@@ -20,6 +20,8 @@ const DEFAULT_PERIOD_SECONDS = 1
 const DEFAULT_LEG_SECONDS = 300
 const MAX_RUDDER_DEG = 35
 const DEFAULT_ROUTE_RUDDER_DEG = 30
+const DEFAULT_GPX_ARRIVAL_RADIUS_M = 25
+const MAX_GPX_ROUTE_POINTS = 2000
 const RUNTIME_SETTINGS_VERSION = 1
 const RUNTIME_SETTINGS_FILE_ENV = 'AJRM_MARINE_SIMULATOR_SETTINGS_FILE'
 const TURN_RATE_PER_RUDDER_DEG_PER_SECOND = 0.08
@@ -144,9 +146,41 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
+    router.post('/own/gpx-route', (req, res) => {
+      if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
+      const route = gpxRouteFromInput(req.body || {})
+      if (!route.points.length) return res.status(400).json({ error: 'GPX route needs at least one valid point' })
+      own.gpxRoute = route
+      own.gpxRouteIndex = route.points.length > 1 ? 1 : 0
+      own.autopilotEnabled = false
+      own.routeTurning = false
+      own.routeTargetDeg = null
+      const first = route.points[0]
+      own.startPosition = { latitude: first.latitude, longitude: first.longitude }
+      cfg.own = { ...(cfg.own || {}), startPosition: own.startPosition, gpxRoute: route, gpxRouteIndex: own.gpxRouteIndex }
+      if (!cfg.outputEnabled) {
+        own.latitude = first.latitude
+        own.longitude = first.longitude
+        own.gpsSpoofOffsetM = 0
+        publishOwn({ includePosition: true })
+      }
+      saveRuntimeSettings()
+      res.json(publicState())
+    })
+
+    router.post('/own/gpx-route/clear', (_req, res) => {
+      if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
+      own.gpxRoute = emptyGpxRoute()
+      own.gpxRouteIndex = 0
+      cfg.own = { ...(cfg.own || {}), gpxRoute: own.gpxRoute, gpxRouteIndex: 0 }
+      saveRuntimeSettings()
+      res.json(publicState())
+    })
+
     router.post('/own/heading', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       own.headingDeg = normalizeDeg(own.headingDeg + (req.body?.direction === 'left' ? -5 : 5))
+      own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
       own.routeTurning = false
       saveRuntimeSettings()
       publishOwn({ includePosition: false })
@@ -164,6 +198,7 @@ module.exports = function ajrmMarineSimulator(app) {
     router.post('/own/autopilot', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       own.autopilotEnabled = req.body?.enabled === true
+      if (own.autopilotEnabled) own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
       own.routeTurning = false
       own.legStartMs = Date.now()
       saveRuntimeSettings()
@@ -434,7 +469,9 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function advanceOwn(dt) {
     own.rateOfTurnDegPerSecond = 0
-    if (own.autopilotEnabled) {
+    if (own.gpxRoute?.enabled && own.gpxRoute.points.length > 0) {
+      steerOwnToGpxRoute()
+    } else if (own.autopilotEnabled) {
       if (!own.routeTurning && (Date.now() - own.legStartMs) / 1000 >= own.legDuration) {
         own.routeTargetDeg = normalizeDeg(own.headingDeg + 180)
         own.routeTurning = true
@@ -445,6 +482,32 @@ module.exports = function ajrmMarineSimulator(app) {
     const moved = movePoint(own.latitude, own.longitude, motion.courseDeg, motion.speedOverGroundMps * dt)
     own.latitude = moved.latitude
     own.longitude = moved.longitude
+  }
+
+  function steerOwnToGpxRoute() {
+    const route = own.gpxRoute
+    if (!route?.points.length) return
+    let index = clampInteger(own.gpxRouteIndex, 0, route.points.length - 1, route.points.length > 1 ? 1 : 0)
+    while (index < route.points.length) {
+      const target = route.points[index]
+      const distance = distanceMeters(own.latitude, own.longitude, target.latitude, target.longitude)
+      if (distance > route.arrivalRadiusM || index >= route.points.length - 1) break
+      index += 1
+    }
+    own.gpxRouteIndex = index
+    const target = route.points[index]
+    if (!target) return
+    const remainingDistance = distanceMeters(own.latitude, own.longitude, target.latitude, target.longitude)
+    if (index >= route.points.length - 1 && remainingDistance <= route.arrivalRadiusM) {
+      own.gpxRoute = { ...route, enabled: false, completed: true }
+      own.gpxRouteIndex = index
+      own.speedKn = 0
+      return
+    }
+    own.headingDeg = bearingDegrees(own.latitude, own.longitude, target.latitude, target.longitude)
+    own.routeTurning = false
+    own.routeTargetDeg = null
+    own.rudderAngleDeg = 0
   }
 
   function advanceTarget(target, dt) {
@@ -602,7 +665,8 @@ module.exports = function ajrmMarineSimulator(app) {
         autopilotEnabled: own.autopilotEnabled,
         routeTurning: own.routeTurning,
         gpsFaultMode: own.gpsFaultMode,
-        legDuration: own.legDuration
+        legDuration: own.legDuration,
+        gpxRoute: publicGpxRoute(own.gpxRoute, own.gpxRouteIndex)
       } : null,
       environment: env ? {
         depthM: round(env.depthM, 1),
@@ -758,7 +822,9 @@ module.exports = function ajrmMarineSimulator(app) {
         headingEnabled: own.headingEnabled !== false,
         autopilotEnabled: own.autopilotEnabled === true,
         legDuration: own.legDuration,
-        gpsFaultMode: own.gpsFaultMode
+        gpsFaultMode: own.gpsFaultMode,
+        gpxRoute: own.gpxRoute || emptyGpxRoute(),
+        gpxRouteIndex: clampInteger(own.gpxRouteIndex, 0, Math.max(0, (own.gpxRoute?.points.length || 1) - 1), 0)
       },
       environment: {
         depthM: round(env.depthM, 1),
@@ -781,6 +847,7 @@ module.exports = function ajrmMarineSimulator(app) {
     const ownConfig = config.own || {}
     const start = ownStartPosition(config)
     const startPosition = startPositionFromInput(start, DEFAULT_BASE)
+    const gpxRoute = gpxRouteFromInput(ownConfig.gpxRoute || {})
     return {
       latitude: startPosition.latitude,
       longitude: startPosition.longitude,
@@ -796,7 +863,9 @@ module.exports = function ajrmMarineSimulator(app) {
       rudderAngleDeg: 0,
       rateOfTurnDegPerSecond: 0,
       gpsFaultMode: GPS_FAULT_MODES.includes(ownConfig.gpsFaultMode) ? ownConfig.gpsFaultMode : 'normal',
-      gpsSpoofOffsetM: 0
+      gpsSpoofOffsetM: 0,
+      gpxRoute,
+      gpxRouteIndex: clampInteger(ownConfig.gpxRouteIndex, 0, Math.max(0, gpxRoute.points.length - 1), gpxRoute.points.length > 1 ? 1 : 0)
     }
   }
 
@@ -807,8 +876,53 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function startPositionFromInput(input = {}, fallback = DEFAULT_BASE) {
     return {
-      latitude: clamp(input.latitude, -90, 90, fallback.latitude),
-      longitude: clamp(input.longitude, -180, 180, fallback.longitude)
+      latitude: clamp(input.latitude, -90, 90, fallback?.latitude),
+      longitude: clamp(input.longitude, -180, 180, fallback?.longitude)
+    }
+  }
+
+  function emptyGpxRoute() {
+    return {
+      enabled: false,
+      completed: false,
+      name: '',
+      points: [],
+      arrivalRadiusM: DEFAULT_GPX_ARRIVAL_RADIUS_M
+    }
+  }
+
+  function gpxRouteFromInput(input = {}) {
+    const points = Array.isArray(input.points)
+      ? input.points
+        .map((point) => startPositionFromInput(point, null))
+        .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))
+        .slice(0, MAX_GPX_ROUTE_POINTS)
+      : []
+    return {
+      enabled: points.length > 0 && input.enabled !== false,
+      completed: input.completed === true && points.length > 0,
+      name: String(input.name || '').trim().slice(0, 120),
+      points,
+      arrivalRadiusM: clamp(input.arrivalRadiusM, 5, 500, DEFAULT_GPX_ARRIVAL_RADIUS_M)
+    }
+  }
+
+  function publicGpxRoute(route = emptyGpxRoute(), index = 0) {
+    const points = Array.isArray(route.points) ? route.points : []
+    const safeIndex = clampInteger(index, 0, Math.max(0, points.length - 1), 0)
+    return {
+      enabled: route.enabled === true,
+      completed: route.completed === true,
+      name: route.name || '',
+      pointCount: points.length,
+      index: safeIndex,
+      arrivalRadiusM: route.arrivalRadiusM || DEFAULT_GPX_ARRIVAL_RADIUS_M,
+      nextPoint: points[safeIndex]
+        ? {
+            latitude: round(points[safeIndex].latitude, 6),
+            longitude: round(points[safeIndex].longitude, 6)
+          }
+        : null
     }
   }
 
@@ -1153,6 +1267,26 @@ function movePoint(latitude, longitude, courseDeg, distanceM) {
   )
 }
 
+function distanceMeters(fromLatitude, fromLongitude, toLatitude, toLongitude) {
+  const lat1 = degToRad(fromLatitude)
+  const lat2 = degToRad(toLatitude)
+  const deltaLat = degToRad(toLatitude - fromLatitude)
+  const deltaLon = degToRad(toLongitude - fromLongitude)
+  const a = Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2
+  return EARTH_RADIUS_M * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function bearingDegrees(fromLatitude, fromLongitude, toLatitude, toLongitude) {
+  const lat1 = degToRad(fromLatitude)
+  const lat2 = degToRad(toLatitude)
+  const deltaLon = degToRad(toLongitude - fromLongitude)
+  const y = Math.sin(deltaLon) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon)
+  return normalizeDeg(Math.atan2(y, x) * 180 / Math.PI)
+}
+
 function groundMotionForHeading({ headingDeg, speedThroughWaterKn, currentSetDeg, currentDriftKn }) {
   const heading = normalizeDeg(headingDeg)
   const headingRad = degToRad(heading)
@@ -1241,6 +1375,10 @@ function clamp(value, min, max, fallback) {
   const number = Number(value)
   if (!Number.isFinite(number)) return fallback
   return Math.min(max, Math.max(min, number))
+}
+
+function clampInteger(value, min, max, fallback) {
+  return Math.round(clamp(value, min, max, fallback))
 }
 
 function round(value, decimals = 0) {

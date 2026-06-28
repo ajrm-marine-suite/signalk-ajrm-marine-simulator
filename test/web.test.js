@@ -24,6 +24,15 @@ test('web app exposes own boat start position controls', () => {
   assert.match(html, /\/own\/start-position/)
 })
 
+test('web app exposes GPX route loading controls', () => {
+  assert.match(html, /GPX Route/)
+  assert.match(html, /id="gpxFile"/)
+  assert.match(html, /id="clearGpxRoute"/)
+  assert.match(html, /parseGpxPoints/)
+  assert.match(html, /\/own\/gpx-route/)
+  assert.match(html, /setInterval\(refresh, 5000\)/)
+})
+
 test('web app keeps target actions and toggles in separate columns', () => {
   assert.match(html, /grid-template-columns: minmax\(160px, 1fr\) 78px 76px 132px 116px 152px 58px/)
   assert.match(html, /\.target-actions[\s\S]*grid-template-columns: repeat\(4, 34px\)/)

@@ -32,6 +32,8 @@ Leave output off when sailing for real.
   and SOG differ so DR Plotter can exercise the navigation triangle and
   heading-based clock notation.
 - Own-vessel route autopilot for unattended soak tests.
+- GPX route loading for own-vessel steering while retaining simulated AIS
+  targets and environment data.
 - GNSS quality with varying HDOP, VDOP, PDOP, satellites used/in-view, signal
   strength, and GPS/GLONASS/Galileo/BeiDou constellation summaries.
 - GNSS fault modes: `normal`, `degraded`, `lost`, `jump`, `spoof`, and
@@ -49,6 +51,11 @@ Version `0.1.10` pauses internal own-boat, environment, and target movement
 while **Start simulator output** is off. After a Signal K restart the simulator
 therefore remains at the active configured/default start position until output
 is deliberately enabled.
+
+Version `0.5.10` adds GPX route loading to the simulator web UI. Loading a GPX
+file places own boat at the first GPX point while output is off, then steers
+toward the following points when simulator output is running. It also reduces
+web-page state polling noise.
 
 Version `0.5.9` enables the simulator plugin by default after install while
 keeping the master output switch off. It also exposes own boat start position
@@ -83,7 +90,7 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.9 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.10 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

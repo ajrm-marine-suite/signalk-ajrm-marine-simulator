@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.10
+
+- Add GPX route loading to the simulator web UI for own-boat steering.
+- Load GPX track, route, or waypoint points into the simulator, place own boat
+  at the first point while output is off, and steer toward subsequent points
+  when simulation output is running.
+- Reduce simulator web page state polling from every 3 seconds to every 5
+  seconds to lower access-log noise.
+
 ## 0.5.9
 
 - Enable the simulator plugin by default after install while keeping master simulation output off after every startup.
