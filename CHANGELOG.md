@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.18
+
+- Split Own Vessel controls into Stationary, Self steering, and GPX route
+  sub-modes so only relevant controls are visible.
+- Replace GPX route playback text buttons with compact transport controls.
+- Add a GPX route restart action that rewinds to the first point and resumes
+  route playback.
+
 ## 0.5.17
 
 - Rename the manual state refresh control to `Update now`.

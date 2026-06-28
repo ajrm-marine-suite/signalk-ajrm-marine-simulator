@@ -192,9 +192,15 @@ module.exports = function ajrmMarineSimulator(app) {
       } else if (action === 'pause') {
         own.gpxRoute = { ...own.gpxRoute, enabled: false, playState: 'paused' }
         own.motionMode = 'route'
-      } else if (action === 'stop') {
-        own.gpxRoute = { ...own.gpxRoute, enabled: false, playState: 'stopped', completed: false }
+      } else if (action === 'stop' || action === 'restart') {
+        own.gpxRoute = {
+          ...own.gpxRoute,
+          enabled: action === 'restart',
+          playState: action === 'restart' ? 'playing' : 'stopped',
+          completed: false
+        }
         own.motionMode = 'route'
+        own.autopilotEnabled = false
         own.gpxRouteIndex = own.gpxRoute.points.length > 1 ? 1 : 0
         const first = own.gpxRoute.points[0]
         own.latitude = first.latitude

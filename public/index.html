@@ -186,6 +186,35 @@
         color: #e9ffff;
       }
 
+      .mode-panel {
+        display: none;
+        margin-top: 10px;
+      }
+
+      .mode-panel.active {
+        display: block;
+      }
+
+      .mode-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+        gap: 8px;
+      }
+
+      .transport-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .transport-row button {
+        min-width: 42px;
+        padding-left: 0;
+        padding-right: 0;
+        font-size: 18px;
+        line-height: 1;
+      }
+
       .file-picker {
         position: absolute;
         width: 1px;
@@ -305,7 +334,7 @@
 
       .own-strip {
         display: grid;
-        grid-template-columns: repeat(3, minmax(180px, 1fr));
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
         gap: 7px;
         padding: 7px;
       }
@@ -366,7 +395,7 @@
         header { align-items: stretch; flex-direction: column; }
         .toolbar { align-items: stretch; flex-direction: column; }
         .tab-button { flex: 1 1 100%; }
-        .field-grid, .own-strip, .segmented { grid-template-columns: 1fr; }
+        .field-grid, .own-strip, .segmented, .mode-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -442,46 +471,83 @@
 
       <section id="tab-own" class="tab-panel active" data-tab-panel="own" aria-label="Own vessel simulator">
         <div class="own-layout">
-          <div class="left-column">
-            <section class="panel">
-              <h2>Own Vessel Mode</h2>
-              <div class="segmented" role="group" aria-label="Own vessel motion mode">
-                <button type="button" data-motion-mode="stationary">Stationary</button>
-                <button type="button" data-motion-mode="self">Self steering</button>
-                <button type="button" data-motion-mode="route">Follow GPX route</button>
-              </div>
-              <div class="hint">Self steering follows the set heading and speed. GPX route following uses the loaded route.</div>
-            </section>
+          <section class="panel">
+            <h2>Own Vessel Mode</h2>
+            <div class="segmented" role="group" aria-label="Own vessel motion mode">
+              <button type="button" data-motion-mode="stationary">Stationary</button>
+              <button type="button" data-motion-mode="self">Self steering</button>
+              <button type="button" data-motion-mode="route">GPX route</button>
+            </div>
 
-            <section class="panel">
-              <h2>Own Boat Start</h2>
-              <div class="field-grid">
-                <label>Start lat <input id="startLatitude" type="number" step="0.000001"></label>
-                <label>Start lon <input id="startLongitude" type="number" step="0.000001"></label>
-              </div>
-              <div class="button-row">
-                <button id="saveStartPosition" type="button">Set start</button>
-                <button id="useCurrentStart" type="button">Use current position</button>
-              </div>
-              <div class="hint">Saved across restarts. Reset defaults returns to the configured start.</div>
-            </section>
+            <div class="mode-panel" data-motion-panel="stationary"></div>
 
-            <section class="panel">
-              <h2>GPX Route</h2>
-              <input id="gpxFile" class="file-picker" type="file" accept=".gpx,application/gpx+xml,text/xml">
-              <div class="button-row">
-                <button id="selectGpxFile" type="button">Choose GPX file</button>
-                <button id="clearGpxRoute" type="button">Clear GPX</button>
+            <div class="mode-panel" data-motion-panel="self">
+              <section>
+                <h2>Own Boat Start</h2>
+                <div class="field-grid">
+                  <label>Start lat <input id="startLatitude" type="number" step="0.000001"></label>
+                  <label>Start lon <input id="startLongitude" type="number" step="0.000001"></label>
+                </div>
+                <div class="button-row">
+                  <button id="saveStartPosition" type="button">Set start</button>
+                  <button id="useCurrentStart" type="button">Use current position</button>
+                </div>
+              </section>
+              <div class="mode-grid">
+                <div class="own-card">
+                  <h3>Heading</h3>
+                  <div class="adjust">
+                    <button data-own-heading="left">-</button>
+                    <input id="ownHeading" type="number" min="0" max="359" step="1">
+                    <button data-own-heading="right">+</button>
+                  </div>
+                  <label><span><input id="ownHeadingEnabled" type="checkbox"> Simulate compass heading</span></label>
+                </div>
+                <div class="own-card">
+                  <h3>Speed</h3>
+                  <div class="adjust">
+                    <button data-own-speed="down">-</button>
+                    <input id="ownSpeedSelf" type="number" min="0" max="999" step="0.1">
+                    <button data-own-speed="up">+</button>
+                  </div>
+                </div>
+                <div class="own-card">
+                  <h3>Auto-reverse Test</h3>
+                  <label><span><input id="ownAutopilot" type="checkbox"> Auto-reverse heading</span></label>
+                  <label>Reverse after seconds <input id="ownLegDuration" type="number" min="10" step="10"></label>
+                </div>
               </div>
-              <div id="gpxRouteName" class="route-name">No GPX file selected</div>
-              <div class="button-row">
-                <button id="playGpxRoute" type="button">Play route</button>
-                <button id="pauseGpxRoute" type="button">Pause route</button>
-                <button id="stopGpxRoute" type="button">Stop route</button>
+            </div>
+
+            <div class="mode-panel" data-motion-panel="route">
+              <section>
+                <h2>GPX Route</h2>
+                <input id="gpxFile" class="file-picker" type="file" accept=".gpx,application/gpx+xml,text/xml">
+                <div class="button-row">
+                  <button id="selectGpxFile" type="button">Choose GPX file</button>
+                  <button id="clearGpxRoute" type="button">Clear GPX</button>
+                </div>
+                <div id="gpxRouteName" class="route-name">No GPX file selected</div>
+                <div class="transport-row" aria-label="GPX route controls">
+                  <button id="restartGpxRoute" type="button" title="Restart route" aria-label="Restart route">⏮</button>
+                  <button id="playGpxRoute" type="button" title="Play route" aria-label="Play route">▶</button>
+                  <button id="pauseGpxRoute" type="button" title="Pause route" aria-label="Pause route">⏸</button>
+                  <button id="stopGpxRoute" type="button" title="Stop route" aria-label="Stop route">⏹</button>
+                </div>
+                <div id="gpxStatus" class="route-status">No GPX route loaded.</div>
+              </section>
+              <div class="mode-grid">
+                <div class="own-card">
+                  <h3>Route speed</h3>
+                  <div class="adjust">
+                    <button data-own-speed="down">-</button>
+                    <input id="ownSpeedRoute" type="number" min="0" max="999" step="0.1">
+                    <button data-own-speed="up">+</button>
+                  </div>
+                </div>
               </div>
-              <div id="gpxStatus" class="route-status">No GPX route loaded.</div>
-            </section>
-          </div>
+            </div>
+          </section>
 
           <section class="own-strip" aria-label="Own boat controls">
             <div class="own-card">
@@ -490,33 +556,10 @@
               <div id="ownPosition" class="hint">--</div>
             </div>
             <div class="own-card">
-              <h3>Heading</h3>
-              <div class="adjust">
-                <button data-own-heading="left">-</button>
-                <input id="ownHeading" type="number" min="0" max="359" step="1">
-                <button data-own-heading="right">+</button>
-              </div>
-              <label><span><input id="ownHeadingEnabled" type="checkbox"> Simulate compass heading</span></label>
-              <div class="hint">Turn off to test systems that only receive COG/SOG.</div>
-            </div>
-            <div class="own-card">
-              <h3>Speed</h3>
-              <div class="adjust">
-                <button data-own-speed="down">-</button>
-                <input id="ownSpeed" type="number" min="0" max="999" step="0.1">
-                <button data-own-speed="up">+</button>
-              </div>
-            </div>
-            <div class="own-card">
               <h3>GPS / GNSS</h3>
               <select id="ownGpsFault"></select>
               <div class="hint">Use Lost/Intermittent for DR testing</div>
               <div id="gnssSummary" class="hint">GPS, GLONASS, Galileo, BeiDou varied</div>
-            </div>
-            <div class="own-card">
-              <h3>Auto-reverse Test</h3>
-              <label><span><input id="ownAutopilot" type="checkbox"> Auto-reverse heading</span></label>
-              <label>Reverse after seconds <input id="ownLegDuration" type="number" min="10" step="10"></label>
             </div>
             <div class="own-card stack">
               <button id="refresh" type="button">Update now</button>
@@ -538,6 +581,7 @@
         tabButtons: Array.from(document.querySelectorAll("[data-tab]")),
         tabPanels: Array.from(document.querySelectorAll("[data-tab-panel]")),
         motionModeButtons: Array.from(document.querySelectorAll("[data-motion-mode]")),
+        motionModePanels: Array.from(document.querySelectorAll("[data-motion-panel]")),
         targets: document.getElementById("targets"),
         enableAllTargets: document.getElementById("enableAllTargets"),
         disableAllTargets: document.getElementById("disableAllTargets"),
@@ -559,6 +603,7 @@
         gpxFile: document.getElementById("gpxFile"),
         selectGpxFile: document.getElementById("selectGpxFile"),
         gpxRouteName: document.getElementById("gpxRouteName"),
+        restartGpxRoute: document.getElementById("restartGpxRoute"),
         playGpxRoute: document.getElementById("playGpxRoute"),
         pauseGpxRoute: document.getElementById("pauseGpxRoute"),
         stopGpxRoute: document.getElementById("stopGpxRoute"),
@@ -568,7 +613,8 @@
         ownPosition: document.getElementById("ownPosition"),
         ownHeading: document.getElementById("ownHeading"),
         ownHeadingEnabled: document.getElementById("ownHeadingEnabled"),
-        ownSpeed: document.getElementById("ownSpeed"),
+        ownSpeedSelf: document.getElementById("ownSpeedSelf"),
+        ownSpeedRoute: document.getElementById("ownSpeedRoute"),
         ownGpsFault: document.getElementById("ownGpsFault"),
         ownAutopilot: document.getElementById("ownAutopilot"),
         ownLegDuration: document.getElementById("ownLegDuration"),
@@ -617,7 +663,8 @@
         if (!isEditing()) {
           els.ownHeading.value = own.headingDeg;
           els.ownHeadingEnabled.checked = own.headingEnabled !== false;
-          els.ownSpeed.value = own.speedKn.toFixed(1);
+          els.ownSpeedSelf.value = own.speedKn.toFixed(1);
+          els.ownSpeedRoute.value = own.speedKn.toFixed(1);
           els.ownAutopilot.checked = own.autopilotEnabled;
           els.ownLegDuration.value = own.legDuration;
           els.startLatitude.value = (own.startPosition?.latitude ?? own.latitude).toFixed(6);
@@ -632,12 +679,16 @@
         for (const button of els.motionModeButtons) {
           button.setAttribute("aria-pressed", button.dataset.motionMode === mode ? "true" : "false");
         }
+        for (const panel of els.motionModePanels) {
+          panel.classList.toggle("active", panel.dataset.motionPanel === mode);
+        }
       }
 
       function renderGpxRoute(route) {
         if (!route || !route.pointCount) {
           els.gpxRouteName.textContent = "No GPX file selected";
           els.gpxStatus.textContent = "No GPX route loaded.";
+          els.restartGpxRoute.disabled = true;
           els.playGpxRoute.disabled = true;
           els.pauseGpxRoute.disabled = true;
           els.stopGpxRoute.disabled = true;
@@ -645,6 +696,7 @@
         }
         els.gpxRouteName.textContent = route.name || "Unnamed GPX route";
         const playState = route.playState || (route.enabled ? "playing" : route.completed ? "stopped" : "paused");
+        els.restartGpxRoute.disabled = false;
         els.playGpxRoute.disabled = playState === "playing";
         els.pauseGpxRoute.disabled = playState !== "playing";
         els.stopGpxRoute.disabled = playState === "stopped" && Math.min(route.index + 1, route.pointCount) <= 2;
@@ -803,7 +855,8 @@
       els.ownGpsFault.addEventListener("change", () => post("/own/controls", { gpsFaultMode: els.ownGpsFault.value }));
       els.ownHeadingEnabled.addEventListener("change", () => post("/own/controls", { headingEnabled: els.ownHeadingEnabled.checked }));
       els.ownHeading.addEventListener("change", () => post("/own/controls", { headingDeg: Number(els.ownHeading.value) }));
-      els.ownSpeed.addEventListener("change", () => post("/own/controls", { speedKn: Number(els.ownSpeed.value) }));
+      els.ownSpeedSelf.addEventListener("change", () => post("/own/controls", { speedKn: Number(els.ownSpeedSelf.value) }));
+      els.ownSpeedRoute.addEventListener("change", () => post("/own/controls", { speedKn: Number(els.ownSpeedRoute.value) }));
       els.ownLegDuration.addEventListener("change", () => post("/own/controls", { legDuration: Number(els.ownLegDuration.value) }));
       els.ownAutopilot.addEventListener("change", () => post("/own/auto-reverse", { enabled: els.ownAutopilot.checked }));
       els.saveStartPosition.addEventListener("click", () => post("/own/start-position", {
@@ -816,6 +869,7 @@
       }));
       els.selectGpxFile.addEventListener("click", () => els.gpxFile.click());
       els.gpxFile.addEventListener("change", () => loadGpxFile());
+      els.restartGpxRoute.addEventListener("click", () => post("/own/gpx-route/playback", { action: "restart" }));
       els.playGpxRoute.addEventListener("click", () => post("/own/gpx-route/playback", { action: "play" }));
       els.pauseGpxRoute.addEventListener("click", () => post("/own/gpx-route/playback", { action: "pause" }));
       els.stopGpxRoute.addEventListener("click", () => post("/own/gpx-route/playback", { action: "stop" }));

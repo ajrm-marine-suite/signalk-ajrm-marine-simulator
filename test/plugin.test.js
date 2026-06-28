@@ -541,6 +541,14 @@ test('own vessel motion mode route switches stationary, self steering and GPX ro
     assert.equal(state.own.gpxRoute.enabled, false)
     assert.equal(state.own.gpxRoute.playState, 'stopped')
     assert.equal(state.own.gpxRoute.index, 1)
+
+    state = invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'restart' })
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.gpxRoute.enabled, true)
+    assert.equal(state.own.gpxRoute.playState, 'playing')
+    assert.equal(state.own.gpxRoute.index, 1)
+    assert.equal(state.own.latitude, 56.3)
+    assert.equal(state.own.longitude, -5.7)
   } finally {
     plugin.stop()
   }
