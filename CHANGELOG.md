@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.8
+
+- Exclude test fixtures from the published package contents.
+
 ## 0.5.7
 
 - Update public install command to the current release tag.
