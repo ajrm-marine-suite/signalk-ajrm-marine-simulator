@@ -13,6 +13,7 @@ test('web app exposes master output and own GPS fault controls', () => {
   assert.match(html, /id="resetOwn"/)
   assert.match(html, /Publish heading/)
   assert.match(html, /Lost\/Intermittent for DR testing/)
+  assert.match(html, /id="ownSpeed" type="number" min="0" max="999"/)
 })
 
 test('web app exposes own boat start position controls', () => {

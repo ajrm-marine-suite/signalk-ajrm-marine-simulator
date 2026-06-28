@@ -19,6 +19,7 @@ const DEFAULT_BASE = { latitude: 56.211222, longitude: -5.557556 }
 const DEFAULT_PERIOD_SECONDS = 1
 const DEFAULT_LEG_SECONDS = 300
 const MAX_RUDDER_DEG = 35
+const MAX_OWN_SPEED_KN = 999
 const DEFAULT_ROUTE_RUDDER_DEG = 30
 const DEFAULT_GPX_ARRIVAL_RADIUS_M = 25
 const MAX_GPX_ROUTE_POINTS = 2000
@@ -189,7 +190,7 @@ module.exports = function ajrmMarineSimulator(app) {
 
     router.post('/own/speed', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
-      own.speedKn = clamp(own.speedKn + (req.body?.direction === 'down' ? -0.5 : 0.5), 0, 30, own.speedKn)
+      own.speedKn = clamp(own.speedKn + (req.body?.direction === 'down' ? -0.5 : 0.5), 0, MAX_OWN_SPEED_KN, own.speedKn)
       saveRuntimeSettings()
       publishOwn({ includePosition: false })
       res.json(publicState())
@@ -565,7 +566,7 @@ module.exports = function ajrmMarineSimulator(app) {
   function updateOwnControls(values) {
     if (values.headingDeg != null) own.headingDeg = normalizeDeg(Number(values.headingDeg))
     if (values.courseDeg != null) own.headingDeg = normalizeDeg(Number(values.courseDeg))
-    if (values.speedKn != null) own.speedKn = clamp(values.speedKn, 0, 30, own.speedKn)
+    if (values.speedKn != null) own.speedKn = clamp(values.speedKn, 0, MAX_OWN_SPEED_KN, own.speedKn)
     if (values.headingEnabled != null) own.headingEnabled = values.headingEnabled === true
     if (values.gpsFaultMode != null && GPS_FAULT_MODES.includes(String(values.gpsFaultMode))) {
       own.gpsFaultMode = String(values.gpsFaultMode)
@@ -853,7 +854,7 @@ module.exports = function ajrmMarineSimulator(app) {
       longitude: startPosition.longitude,
       startPosition,
       headingDeg: normalizeDeg(ownConfig.initialHeadingDeg ?? ownConfig.initialCourseDeg ?? 90),
-      speedKn: clamp(ownConfig.initialSpeedKn, 0, 30, 0),
+      speedKn: clamp(ownConfig.initialSpeedKn, 0, MAX_OWN_SPEED_KN, 0),
       headingEnabled: ownConfig.headingEnabled !== false,
       autopilotEnabled: ownConfig.autopilotEnabled === true,
       legDuration: clamp(ownConfig.legDuration, 10, 86400, DEFAULT_LEG_SECONDS),

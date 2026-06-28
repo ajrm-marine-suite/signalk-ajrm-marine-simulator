@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.12
+
+- Raise own-boat simulator speed limit from 30 knots to 999 knots for
+  deliberate fault and stress testing.
+
 ## 0.5.11
 
 - Keep the selected GPX filename visible in the file chooser after loading.

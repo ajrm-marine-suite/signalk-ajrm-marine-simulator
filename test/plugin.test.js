@@ -391,6 +391,31 @@ test('loaded GPX route starts own boat at first point and steers toward next poi
   }
 })
 
+test('own boat speed controls allow high-speed testing up to 999 knots', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 1200 }
+    })
+    let state = invoke(routes, 'GET', '/state')
+    assert.equal(state.own.speedKn, 999)
+
+    state = invoke(routes, 'POST', '/own/controls', { speedKn: 250 })
+    assert.equal(state.own.speedKn, 250)
+
+    state = invoke(routes, 'POST', '/own/controls', { speedKn: 1200 })
+    assert.equal(state.own.speedKn, 999)
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('web control settings survive plugin restart while simulator output stays off', () => {
   const routes = new Map()
   const app = {
