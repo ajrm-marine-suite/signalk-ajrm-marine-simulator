@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.9
+
+- Enable the simulator plugin by default after install while keeping master simulation output off after every startup.
+- Use the configured own-boat start position by default, without requiring an extra enable flag.
+- Add web controls for own-boat start latitude/longitude, with saved runtime settings and reset-to-defaults behaviour.
+
 ## 0.5.8
 
 - Exclude test fixtures from the published package contents.

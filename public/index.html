@@ -79,9 +79,22 @@
         padding: 10px;
       }
 
+      .left-column {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
       .field-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         margin-top: 8px;
       }
@@ -250,20 +263,35 @@
     </header>
 
     <main class="grid">
-      <section class="panel">
-        <h2>Environment</h2>
-        <div class="field-grid">
-          <label>Depth m <input id="depthM" type="number" step="0.1"></label>
-          <label>App wind kn <input id="windSpeed" type="number" step="0.1"></label>
-          <label>App angle deg <input id="windAngle" type="number" step="1"></label>
-          <label>Current drift kn <input id="currentDrift" type="number" step="0.1"></label>
-          <label>Current set deg <input id="currentSet" type="number" step="1"></label>
-          <label>Engine room C <input id="engineTemp" type="number" step="0.1"></label>
-          <label><span><input id="depthVarying" type="checkbox"> Vary depth</span></label>
-          <label><span><input id="windVarying" type="checkbox"> Vary wind</span></label>
-          <label><span><input id="currentVarying" type="checkbox"> Vary current/tide</span></label>
-        </div>
-      </section>
+      <div class="left-column">
+        <section class="panel">
+          <h2>Environment</h2>
+          <div class="field-grid">
+            <label>Depth m <input id="depthM" type="number" step="0.1"></label>
+            <label>App wind kn <input id="windSpeed" type="number" step="0.1"></label>
+            <label>App angle deg <input id="windAngle" type="number" step="1"></label>
+            <label>Current drift kn <input id="currentDrift" type="number" step="0.1"></label>
+            <label>Current set deg <input id="currentSet" type="number" step="1"></label>
+            <label>Engine room C <input id="engineTemp" type="number" step="0.1"></label>
+            <label><span><input id="depthVarying" type="checkbox"> Vary depth</span></label>
+            <label><span><input id="windVarying" type="checkbox"> Vary wind</span></label>
+            <label><span><input id="currentVarying" type="checkbox"> Vary current/tide</span></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Own Boat Start</h2>
+          <div class="field-grid">
+            <label>Start lat <input id="startLatitude" type="number" step="0.000001"></label>
+            <label>Start lon <input id="startLongitude" type="number" step="0.000001"></label>
+          </div>
+          <div class="button-row">
+            <button id="saveStartPosition" type="button">Set start</button>
+            <button id="useCurrentStart" type="button">Use current</button>
+          </div>
+          <div class="hint">Saved across restarts. Reset defaults returns to the configured start.</div>
+        </section>
+      </div>
 
       <section class="panel">
         <h2>AIS Targets</h2>
@@ -331,6 +359,10 @@
         depthVarying: document.getElementById("depthVarying"),
         windVarying: document.getElementById("windVarying"),
         currentVarying: document.getElementById("currentVarying"),
+        startLatitude: document.getElementById("startLatitude"),
+        startLongitude: document.getElementById("startLongitude"),
+        saveStartPosition: document.getElementById("saveStartPosition"),
+        useCurrentStart: document.getElementById("useCurrentStart"),
         ownHeadingSpeed: document.getElementById("ownHeadingSpeed"),
         ownPosition: document.getElementById("ownPosition"),
         ownHeading: document.getElementById("ownHeading"),
@@ -385,6 +417,8 @@
           els.ownSpeed.value = own.speedKn.toFixed(1);
           els.ownAutopilot.checked = own.autopilotEnabled;
           els.ownLegDuration.value = own.legDuration;
+          els.startLatitude.value = (own.startPosition?.latitude ?? own.latitude).toFixed(6);
+          els.startLongitude.value = (own.startPosition?.longitude ?? own.longitude).toFixed(6);
           fillGpsSelect(els.ownGpsFault, own.gpsFaultMode);
         }
       }
@@ -504,6 +538,14 @@
       els.ownSpeed.addEventListener("change", () => post("/own/controls", { speedKn: Number(els.ownSpeed.value) }));
       els.ownLegDuration.addEventListener("change", () => post("/own/controls", { legDuration: Number(els.ownLegDuration.value) }));
       els.ownAutopilot.addEventListener("change", () => post("/own/autopilot", { enabled: els.ownAutopilot.checked }));
+      els.saveStartPosition.addEventListener("click", () => post("/own/start-position", {
+        latitude: Number(els.startLatitude.value),
+        longitude: Number(els.startLongitude.value)
+      }));
+      els.useCurrentStart.addEventListener("click", () => state?.own && post("/own/start-position", {
+        latitude: state.own.latitude,
+        longitude: state.own.longitude
+      }));
       els.resetOwn.addEventListener("click", () => post("/own/reset", {}));
       document.querySelectorAll("[data-own-heading]").forEach((button) => button.addEventListener("click", () => post("/own/heading", { direction: button.dataset.ownHeading })));
       document.querySelectorAll("[data-own-speed]").forEach((button) => button.addEventListener("click", () => post("/own/speed", { direction: button.dataset.ownSpeed })));

@@ -16,10 +16,12 @@ off, the web controls remain available but no simulated Signal K deltas are
 published. Output always starts off after a plugin or Signal K restart, even if
 it was enabled during the previous run.
 
-Web-control settings such as own-vessel heading/STW, GNSS fault mode,
-environment values, target switches, and target fault modes are remembered
-across Signal K restarts. Use **Reset defaults** to clear those saved runtime
-settings and return to the configured/default simulator setup.
+The plugin is enabled by default after install, but simulation output remains
+off until the skipper deliberately starts it. Web-control settings such as own
+boat start position, heading/STW, GNSS fault mode, environment values, target
+switches, and target fault modes are remembered across Signal K restarts. Use
+**Reset defaults** to clear those saved runtime settings and return to the
+configured/default simulator setup.
 
 Leave output off when sailing for real.
 
@@ -47,6 +49,11 @@ Version `0.1.10` pauses internal own-boat, environment, and target movement
 while **Start simulator output** is off. After a Signal K restart the simulator
 therefore remains at the active configured/default start position until output
 is deliberately enabled.
+
+Version `0.5.9` enables the simulator plugin by default after install while
+keeping the master output switch off. It also exposes own boat start position
+in the web UI, so tests can start from a chosen berth without editing plugin
+configuration.
 
 Version `0.5.3` remembers simulator web-control settings across Signal K
 restarts. **Reset defaults** clears those saved runtime settings and restores
@@ -76,7 +83,7 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.8 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.9 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

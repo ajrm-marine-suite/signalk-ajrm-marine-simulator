@@ -129,6 +129,21 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
+    router.post('/own/start-position', (req, res) => {
+      if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
+      const next = startPositionFromInput(req.body || {}, own.startPosition || DEFAULT_BASE)
+      cfg.own = { ...(cfg.own || {}), startPosition: next }
+      own.startPosition = next
+      if (!cfg.outputEnabled) {
+        own.latitude = next.latitude
+        own.longitude = next.longitude
+        own.gpsSpoofOffsetM = 0
+        publishOwn({ includePosition: true })
+      }
+      saveRuntimeSettings()
+      res.json(publicState())
+    })
+
     router.post('/own/heading', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       own.headingDeg = normalizeDeg(own.headingDeg + (req.body?.direction === 'left' ? -5 : 5))
@@ -577,6 +592,10 @@ module.exports = function ajrmMarineSimulator(app) {
       own: own ? {
         latitude: round(own.latitude, 6),
         longitude: round(own.longitude, 6),
+        startPosition: {
+          latitude: round(own.startPosition?.latitude ?? DEFAULT_BASE.latitude, 6),
+          longitude: round(own.startPosition?.longitude ?? DEFAULT_BASE.longitude, 6)
+        },
         headingDeg: round(own.headingDeg, 0),
         speedKn: round(own.speedKn, 1),
         headingEnabled: own.headingEnabled !== false,
@@ -730,6 +749,10 @@ module.exports = function ajrmMarineSimulator(app) {
       savedAt: new Date().toISOString(),
       targetAutopilotEnabled: cfg.targetAutopilotEnabled === true,
       own: {
+        startPosition: {
+          latitude: round(own.startPosition?.latitude ?? DEFAULT_BASE.latitude, 6),
+          longitude: round(own.startPosition?.longitude ?? DEFAULT_BASE.longitude, 6)
+        },
         initialHeadingDeg: round(own.headingDeg, 0),
         initialSpeedKn: round(own.speedKn, 1),
         headingEnabled: own.headingEnabled !== false,
@@ -757,9 +780,11 @@ module.exports = function ajrmMarineSimulator(app) {
   function initialOwn(config) {
     const ownConfig = config.own || {}
     const start = ownStartPosition(config)
+    const startPosition = startPositionFromInput(start, DEFAULT_BASE)
     return {
-      latitude: clamp(start.latitude, -90, 90, DEFAULT_BASE.latitude),
-      longitude: clamp(start.longitude, -180, 180, DEFAULT_BASE.longitude),
+      latitude: startPosition.latitude,
+      longitude: startPosition.longitude,
+      startPosition,
       headingDeg: normalizeDeg(ownConfig.initialHeadingDeg ?? ownConfig.initialCourseDeg ?? 90),
       speedKn: clamp(ownConfig.initialSpeedKn, 0, 30, 0),
       headingEnabled: ownConfig.headingEnabled !== false,
@@ -777,9 +802,14 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function ownStartPosition(config) {
     const ownConfig = config?.own || {}
-    return ownConfig.useConfiguredStartPosition === true
-      ? ownConfig.startPosition || DEFAULT_BASE
-      : DEFAULT_BASE
+    return ownConfig.startPosition || DEFAULT_BASE
+  }
+
+  function startPositionFromInput(input = {}, fallback = DEFAULT_BASE) {
+    return {
+      latitude: clamp(input.latitude, -90, 90, fallback.latitude),
+      longitude: clamp(input.longitude, -180, 180, fallback.longitude)
+    }
   }
 
   function initialEnvironment(config) {
@@ -1028,11 +1058,6 @@ module.exports = function ajrmMarineSimulator(app) {
                 longitude: { type: 'number', default: DEFAULT_BASE.longitude }
               },
               default: DEFAULT_BASE
-            },
-            useConfiguredStartPosition: {
-              type: 'boolean',
-              title: 'Use configured start position instead of the default',
-              default: false
             },
             initialHeadingDeg: { type: 'number', title: 'Initial heading', default: 90 },
             initialSpeedKn: { type: 'number', title: 'Initial speed knots', default: 0 },

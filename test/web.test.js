@@ -15,6 +15,15 @@ test('web app exposes master output and own GPS fault controls', () => {
   assert.match(html, /Lost\/Intermittent for DR testing/)
 })
 
+test('web app exposes own boat start position controls', () => {
+  assert.match(html, /Own Boat Start/)
+  assert.match(html, /id="startLatitude"/)
+  assert.match(html, /id="startLongitude"/)
+  assert.match(html, /id="saveStartPosition"/)
+  assert.match(html, /id="useCurrentStart"/)
+  assert.match(html, /\/own\/start-position/)
+})
+
 test('web app keeps target actions and toggles in separate columns', () => {
   assert.match(html, /grid-template-columns: minmax\(160px, 1fr\) 78px 76px 132px 116px 152px 58px/)
   assert.match(html, /\.target-actions[\s\S]*grid-template-columns: repeat\(4, 34px\)/)

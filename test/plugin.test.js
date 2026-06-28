@@ -279,7 +279,7 @@ test('own boat stays at the default start while master output is off', async () 
   }
 })
 
-test('old configured start position is ignored unless explicitly enabled', () => {
+test('configured own boat start position is used by default', () => {
   const messages = []
   const routes = new Map()
   const app = {
@@ -297,23 +297,54 @@ test('old configured start position is ignored unless explicitly enabled', () =>
       }
     })
     let state = invoke(routes, 'GET', '/state')
-    assert.equal(state.own.latitude, Number(DEFAULT_BASE.latitude.toFixed(6)))
-    assert.equal(state.own.longitude, Number(DEFAULT_BASE.longitude.toFixed(6)))
-
-    plugin.stop()
-    plugin.start({
-      own: {
-        useConfiguredStartPosition: true,
-        startPosition: { latitude: 56.308558, longitude: -5.638818 }
-      }
-    })
-    state = invoke(routes, 'GET', '/state')
     assert.equal(state.own.latitude, 56.308558)
     assert.equal(state.own.longitude, -5.638818)
+    assert.deepEqual(state.own.startPosition, { latitude: 56.308558, longitude: -5.638818 })
 
     state = invoke(routes, 'POST', '/own/reset', {})
     assert.equal(state.own.latitude, 56.308558)
     assert.equal(state.own.longitude, -5.638818)
+    assert.deepEqual(state.own.startPosition, { latitude: 56.308558, longitude: -5.638818 })
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('web start position control persists and keeps output off after restart', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 0 }
+    })
+    let state = invoke(routes, 'POST', '/own/start-position', {
+      latitude: 56.300123,
+      longitude: -5.700456
+    })
+    assert.equal(state.outputEnabled, false)
+    assert.equal(state.own.latitude, 56.300123)
+    assert.equal(state.own.longitude, -5.700456)
+    assert.deepEqual(state.own.startPosition, { latitude: 56.300123, longitude: -5.700456 })
+
+    plugin.stop()
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 0 }
+    })
+    state = invoke(routes, 'GET', '/state')
+    assert.equal(state.outputEnabled, false)
+    assert.equal(state.own.latitude, 56.300123)
+    assert.equal(state.own.longitude, -5.700456)
+    assert.deepEqual(state.own.startPosition, { latitude: 56.300123, longitude: -5.700456 })
+
+    state = invoke(routes, 'POST', '/own/reset', {})
+    assert.equal(state.outputEnabled, false)
+    assert.equal(state.own.latitude, Number(DEFAULT_BASE.latitude.toFixed(6)))
+    assert.equal(state.own.longitude, Number(DEFAULT_BASE.longitude.toFixed(6)))
   } finally {
     plugin.stop()
   }
@@ -339,6 +370,10 @@ test('web control settings survive plugin restart while simulator output stays o
       headingEnabled: false,
       gpsFaultMode: 'intermittent',
       legDuration: 600
+    })
+    invoke(routes, 'POST', '/own/start-position', {
+      latitude: 56.222222,
+      longitude: -5.555555
     })
     invoke(routes, 'POST', '/own/autopilot', { enabled: true })
     invoke(routes, 'POST', '/environment', {
@@ -369,6 +404,7 @@ test('web control settings survive plugin restart while simulator output stays o
     assert.equal(state.own.gpsFaultMode, 'intermittent')
     assert.equal(state.own.autopilotEnabled, true)
     assert.equal(state.own.legDuration, 600)
+    assert.deepEqual(state.own.startPosition, { latitude: 56.222222, longitude: -5.555555 })
     assert.equal(state.environment.currentDriftKn, 2.4)
     assert.equal(state.environment.currentSetDeg, 112)
     assert.equal(state.environment.windVarying, false)
