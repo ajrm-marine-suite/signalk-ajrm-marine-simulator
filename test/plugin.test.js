@@ -397,9 +397,14 @@ test('loaded GPX route starts own boat at first point and steers toward next poi
     assert.equal(state.outputEnabled, false)
     assert.equal(state.own.latitude, 56.3)
     assert.equal(state.own.longitude, -5.7)
-    assert.equal(state.own.gpxRoute.enabled, true)
+    assert.equal(state.own.gpxRoute.enabled, false)
+    assert.equal(state.own.gpxRoute.playState, 'stopped')
     assert.equal(state.own.gpxRoute.pointCount, 2)
     assert.equal(state.own.gpxRoute.index, 1)
+
+    state = invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
+    assert.equal(state.own.gpxRoute.enabled, true)
+    assert.equal(state.own.gpxRoute.playState, 'playing')
 
     invoke(routes, 'POST', '/output', { enabled: true })
     await delay(260)
@@ -436,11 +441,13 @@ test('GPX route following does not bounce around waypoints at high speed', async
         { latitude: 56.302000, longitude: -5.700000 }
       ]
     })
+    invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
 
     invoke(routes, 'POST', '/output', { enabled: true })
     await delay(700)
     const state = invoke(routes, 'GET', '/state')
     assert.equal(state.own.gpxRoute.completed, true)
+    assert.equal(state.own.gpxRoute.playState, 'stopped')
     assert.equal(state.own.gpxRoute.index, 2)
     assert.equal(state.own.speedKn, 0)
     assert.ok(Math.abs(state.own.latitude - 56.302) < 0.0002)
@@ -470,6 +477,70 @@ test('own boat speed controls allow high-speed testing up to 999 knots', () => {
 
     state = invoke(routes, 'POST', '/own/controls', { speedKn: 1200 })
     assert.equal(state.own.speedKn, 999)
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('own vessel motion mode route switches stationary, self steering and GPX route following', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 4 }
+    })
+    let state = invoke(routes, 'GET', '/state')
+    assert.equal(state.own.motionMode, 'self')
+
+    state = invoke(routes, 'POST', '/own/motion-mode', { mode: 'stationary' })
+    assert.equal(state.own.motionMode, 'stationary')
+    assert.equal(state.own.speedKn, 0)
+    assert.equal(state.own.autopilotEnabled, false)
+
+    state = invoke(routes, 'POST', '/own/controls', { speedKn: 5 })
+    state = invoke(routes, 'POST', '/own/motion-mode', { mode: 'self' })
+    assert.equal(state.own.motionMode, 'self')
+
+    state = invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Remembered route',
+      points: [
+        { latitude: 56.300000, longitude: -5.700000 },
+        { latitude: 56.301000, longitude: -5.700000 }
+      ]
+    })
+    assert.equal(state.own.gpxRoute.name, 'Remembered route')
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.gpxRoute.playState, 'stopped')
+
+    state = invoke(routes, 'POST', '/own/motion-mode', { mode: 'self' })
+    assert.equal(state.own.motionMode, 'self')
+    assert.equal(state.own.gpxRoute.enabled, false)
+
+    state = invoke(routes, 'POST', '/own/motion-mode', { mode: 'route' })
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.gpxRoute.enabled, false)
+    assert.equal(state.own.gpxRoute.playState, 'stopped')
+
+    state = invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.gpxRoute.enabled, true)
+    assert.equal(state.own.gpxRoute.playState, 'playing')
+
+    state = invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'pause' })
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.gpxRoute.enabled, false)
+    assert.equal(state.own.gpxRoute.playState, 'paused')
+
+    state = invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'stop' })
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.gpxRoute.enabled, false)
+    assert.equal(state.own.gpxRoute.playState, 'stopped')
+    assert.equal(state.own.gpxRoute.index, 1)
   } finally {
     plugin.stop()
   }

@@ -41,12 +41,30 @@ test('web app exposes own boat start position controls', () => {
 test('web app exposes GPX route loading controls', () => {
   assert.match(html, /GPX Route/)
   assert.match(html, /id="gpxFile"/)
+  assert.match(html, /id="selectGpxFile"/)
+  assert.match(html, /Choose GPX file/)
+  assert.match(html, /id="gpxRouteName"/)
+  assert.match(html, /id="playGpxRoute"/)
+  assert.match(html, /Play route/)
+  assert.match(html, /id="pauseGpxRoute"/)
+  assert.match(html, /Pause route/)
+  assert.match(html, /id="stopGpxRoute"/)
+  assert.match(html, /Stop route/)
+  assert.match(html, /\/own\/gpx-route\/playback/)
   assert.match(html, /id="clearGpxRoute"/)
   assert.match(html, /route-status/)
   assert.match(html, /parseGpxPoints/)
   assert.match(html, /\/own\/gpx-route/)
   assert.match(html, /setInterval\(refresh, 5000\)/)
   assert.doesNotMatch(html, /gpxFile\.value = ""/)
+})
+
+test('web app exposes own vessel motion modes', () => {
+  assert.match(html, /data-motion-mode="stationary"[\s\S]*Stationary/)
+  assert.match(html, /data-motion-mode="self"[\s\S]*Self steering/)
+  assert.match(html, /data-motion-mode="route"[\s\S]*Follow GPX route/)
+  assert.match(html, /\/own\/motion-mode/)
+  assert.match(html, /function renderMotionMode\(mode\)/)
 })
 
 test('web app keeps target actions and toggles in separate columns', () => {
@@ -68,10 +86,20 @@ test('web app controls environment variation', () => {
 
 test('web app exposes bulk AIS target controls', () => {
   assert.match(html, /Let AIS vessels make automatic turns/)
+  assert.match(html, /checkbox\("AR"/)
   assert.match(html, /id="enableAllTargets"/)
   assert.match(html, /id="disableAllTargets"/)
   assert.match(html, /\/targets\/autopilot/)
   assert.match(html, /function setAllTargets\(enabled\)/)
+})
+
+test('web app labels auto-reverse without autopilot wording', () => {
+  assert.match(html, /Auto-reverse Test/)
+  assert.match(html, /Auto-reverse heading/)
+  assert.match(html, /Reverse after seconds/)
+  assert.match(html, /\/own\/auto-reverse/)
+  assert.doesNotMatch(html, />Autopilot</)
+  assert.doesNotMatch(html, /Route autopilot/)
 })
 
 test('web app wires keyboard arrows to own boat controls', () => {

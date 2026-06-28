@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.16
+
+- Rework own-vessel control around explicit Stationary, Self steering, and
+  Follow GPX route modes.
+- Add GPX route Play, Pause, and Stop controls separate from the master Run
+  simulator switch.
+- Replace visible autopilot wording with auto-reverse wording, keeping
+  compatibility routes and config keys internally.
+- Show the remembered GPX route name in a dedicated selector field instead of
+  relying on the browser file input display.
+
 ## 0.5.15
 
 - Add a real simulated-environment enable switch; when disabled, simulated
@@ -77,7 +88,7 @@
 
 ## 0.5.2
 
-- Reset own-vessel and AIS-target autopilot leg timers when simulator output is enabled, so routes wait the configured leg duration from simulation start rather than Signal K startup.
+- Reset own-vessel and AIS-target auto-reverse leg timers when simulator output is enabled, so routes wait the configured leg duration from simulation start rather than Signal K startup.
 
 ## 0.5.1
 

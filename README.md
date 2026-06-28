@@ -11,7 +11,7 @@ simulated own-vessel values and simulated AIS targets do not fight each other.
 
 ## Safety Switch
 
-The simulator has a master **Start simulator output** switch. When output is
+The simulator has a master **Run simulator** switch. When output is
 off, the web controls remain available but no simulated Signal K deltas are
 published. Output always starts off after a plugin or Signal K restart, even if
 it was enabled during the previous run.
@@ -31,9 +31,12 @@ Leave output off when sailing for real.
   state. Own-boat controls set heading and STW; cross tide/current makes COG
   and SOG differ so DR Plotter can exercise the navigation triangle and
   heading-based clock notation.
-- Own-vessel route autopilot for unattended soak tests.
-- GPX route loading for own-vessel steering while retaining simulated AIS
-  targets and environment data.
+- Own-vessel motion modes: stationary, self steering to a set heading/STW, and
+  GPX route following while retaining simulated AIS targets and environment
+  data.
+- GPX route following has its own Play, Pause, and Stop controls separate from
+  the master Run simulator switch.
+- Own-vessel auto-reverse heading tests for unattended soak tests.
 - GNSS quality with varying HDOP, VDOP, PDOP, satellites used/in-view, signal
   strength, and GPS/GLONASS/Galileo/BeiDou constellation summaries.
 - GNSS fault modes: `normal`, `degraded`, `lost`, `jump`, `spoof`, and
@@ -42,13 +45,13 @@ Leave output off when sailing for real.
 - Apparent/true wind values with optional variation.
 - Cross-current/tide set and drift with optional variation.
 - Engine room temperature, exhaust water temperature, and basic battery values.
-- AIS target vessels, fixed AIS stations, target autopilot routes, emergency
+- AIS target vessels, fixed AIS stations, target auto-reverse routes, emergency
   identities, per-target GPS fault modes, and manual target controls.
 
 ## DR Testing
 
 Version `0.1.10` pauses internal own-boat, environment, and target movement
-while **Start simulator output** is off. After a Signal K restart the simulator
+while **Run simulator** is off. After a Signal K restart the simulator
 therefore remains at the active configured/default start position until output
 is deliberately enabled.
 

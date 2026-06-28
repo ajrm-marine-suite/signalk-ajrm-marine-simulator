@@ -152,14 +152,15 @@ module.exports = function ajrmMarineSimulator(app) {
       if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const route = gpxRouteFromInput(req.body || {})
       if (!route.points.length) return res.status(400).json({ error: 'GPX route needs at least one valid point' })
-      own.gpxRoute = route
+      own.gpxRoute = { ...route, enabled: false, playState: 'stopped', completed: false }
       own.gpxRouteIndex = route.points.length > 1 ? 1 : 0
+      own.motionMode = 'route'
       own.autopilotEnabled = false
       own.routeTurning = false
       own.routeTargetDeg = null
       const first = route.points[0]
       own.startPosition = { latitude: first.latitude, longitude: first.longitude }
-      cfg.own = { ...(cfg.own || {}), startPosition: own.startPosition, gpxRoute: route, gpxRouteIndex: own.gpxRouteIndex }
+      cfg.own = { ...(cfg.own || {}), startPosition: own.startPosition, gpxRoute: own.gpxRoute, gpxRouteIndex: own.gpxRouteIndex }
       if (!cfg.outputEnabled) {
         own.latitude = first.latitude
         own.longitude = first.longitude
@@ -174,13 +175,44 @@ module.exports = function ajrmMarineSimulator(app) {
       if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
       own.gpxRoute = emptyGpxRoute()
       own.gpxRouteIndex = 0
+      own.motionMode = own.speedKn > 0 ? 'self' : 'stationary'
       cfg.own = { ...(cfg.own || {}), gpxRoute: own.gpxRoute, gpxRouteIndex: 0 }
+      saveRuntimeSettings()
+      res.json(publicState())
+    })
+
+    router.post('/own/gpx-route/playback', (req, res) => {
+      if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
+      const action = String(req.body?.action || '')
+      if (!own.gpxRoute?.points?.length) return res.status(400).json({ error: 'Load a GPX route before using route playback' })
+      if (action === 'play') {
+        own.gpxRoute = { ...own.gpxRoute, enabled: true, playState: 'playing', completed: false }
+        own.motionMode = 'route'
+        own.autopilotEnabled = false
+      } else if (action === 'pause') {
+        own.gpxRoute = { ...own.gpxRoute, enabled: false, playState: 'paused' }
+        own.motionMode = 'route'
+      } else if (action === 'stop') {
+        own.gpxRoute = { ...own.gpxRoute, enabled: false, playState: 'stopped', completed: false }
+        own.motionMode = 'route'
+        own.gpxRouteIndex = own.gpxRoute.points.length > 1 ? 1 : 0
+        const first = own.gpxRoute.points[0]
+        own.latitude = first.latitude
+        own.longitude = first.longitude
+        own.gpsSpoofOffsetM = 0
+        if (!cfg.outputEnabled) publishOwn({ includePosition: true })
+      } else {
+        return res.status(400).json({ error: 'Unknown GPX route playback action' })
+      }
+      own.routeTurning = false
+      own.routeTargetDeg = null
       saveRuntimeSettings()
       res.json(publicState())
     })
 
     router.post('/own/heading', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
+      own.motionMode = 'self'
       own.headingDeg = normalizeDeg(own.headingDeg + (req.body?.direction === 'left' ? -5 : 5))
       own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
       own.routeTurning = false
@@ -191,17 +223,54 @@ module.exports = function ajrmMarineSimulator(app) {
 
     router.post('/own/speed', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
+      own.motionMode = 'self'
       own.speedKn = clamp(own.speedKn + (req.body?.direction === 'down' ? -0.5 : 0.5), 0, MAX_OWN_SPEED_KN, own.speedKn)
       saveRuntimeSettings()
       publishOwn({ includePosition: false })
       res.json(publicState())
     })
 
-    router.post('/own/autopilot', (req, res) => {
+    const setOwnAutoReverse = (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       own.autopilotEnabled = req.body?.enabled === true
-      if (own.autopilotEnabled) own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+      if (own.autopilotEnabled) {
+        own.motionMode = 'self'
+        own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+      }
       own.routeTurning = false
+      own.legStartMs = Date.now()
+      saveRuntimeSettings()
+      res.json(publicState())
+    }
+    router.post('/own/autopilot', setOwnAutoReverse)
+    router.post('/own/auto-reverse', setOwnAutoReverse)
+
+    router.post('/own/motion-mode', (req, res) => {
+      if (!own) return res.status(409).json({ error: 'Simulator is not running' })
+      const mode = String(req.body?.mode || '')
+      if (!['stationary', 'self', 'route'].includes(mode)) return res.status(400).json({ error: 'Unknown own-vessel motion mode' })
+      if (mode === 'stationary') {
+        own.motionMode = 'stationary'
+        own.speedKn = 0
+        own.autopilotEnabled = false
+        own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+      } else if (mode === 'self') {
+        own.motionMode = 'self'
+        own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+      } else if (own.gpxRoute?.points?.length > 0) {
+        own.motionMode = 'route'
+        own.gpxRoute = {
+          ...own.gpxRoute,
+          enabled: own.gpxRoute.playState === 'playing',
+          completed: false,
+          playState: own.gpxRoute.playState || 'stopped'
+        }
+        own.autopilotEnabled = false
+      } else {
+        return res.status(400).json({ error: 'Load a GPX route before selecting route following' })
+      }
+      own.routeTurning = false
+      own.routeTargetDeg = null
       own.legStartMs = Date.now()
       saveRuntimeSettings()
       res.json(publicState())
@@ -510,10 +579,13 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function advanceOwn(dt) {
     own.rateOfTurnDegPerSecond = 0
-    if (own.gpxRoute?.enabled && own.gpxRoute.points.length > 0) {
+    if (own.motionMode === 'stationary') {
+      return
+    }
+    if (own.motionMode === 'route' && own.gpxRoute?.enabled && own.gpxRoute.points.length > 0) {
       advanceOwnAlongGpxRoute(dt)
       return
-    } else if (own.autopilotEnabled) {
+    } else if (own.motionMode !== 'route' && own.autopilotEnabled) {
       if (!own.routeTurning && (Date.now() - own.legStartMs) / 1000 >= own.legDuration) {
         own.routeTargetDeg = normalizeDeg(own.headingDeg + 180)
         own.routeTurning = true
@@ -565,7 +637,8 @@ module.exports = function ajrmMarineSimulator(app) {
     if (!target) return
     const remainingDistance = distanceMeters(own.latitude, own.longitude, target.latitude, target.longitude)
     if (index >= route.points.length - 1 && remainingDistance <= route.arrivalRadiusM) {
-      own.gpxRoute = { ...route, enabled: false, completed: true }
+      own.gpxRoute = { ...route, enabled: false, completed: true, playState: 'stopped' }
+      own.motionMode = 'route'
       own.gpxRouteIndex = index
       own.speedKn = 0
       return
@@ -629,9 +702,21 @@ module.exports = function ajrmMarineSimulator(app) {
   }
 
   function updateOwnControls(values) {
-    if (values.headingDeg != null) own.headingDeg = normalizeDeg(Number(values.headingDeg))
-    if (values.courseDeg != null) own.headingDeg = normalizeDeg(Number(values.courseDeg))
-    if (values.speedKn != null) own.speedKn = clamp(values.speedKn, 0, MAX_OWN_SPEED_KN, own.speedKn)
+    if (values.headingDeg != null) {
+      own.motionMode = 'self'
+      own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+      own.headingDeg = normalizeDeg(Number(values.headingDeg))
+    }
+    if (values.courseDeg != null) {
+      own.motionMode = 'self'
+      own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+      own.headingDeg = normalizeDeg(Number(values.courseDeg))
+    }
+    if (values.speedKn != null) {
+      own.motionMode = Number(values.speedKn) > 0 ? 'self' : 'stationary'
+      own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+      own.speedKn = clamp(values.speedKn, 0, MAX_OWN_SPEED_KN, own.speedKn)
+    }
     if (values.headingEnabled != null) own.headingEnabled = values.headingEnabled === true
     if (values.gpsFaultMode != null && GPS_FAULT_MODES.includes(String(values.gpsFaultMode))) {
       own.gpsFaultMode = String(values.gpsFaultMode)
@@ -728,6 +813,7 @@ module.exports = function ajrmMarineSimulator(app) {
         },
         headingDeg: round(own.headingDeg, 0),
         speedKn: round(own.speedKn, 1),
+        motionMode: ownMotionMode(),
         headingEnabled: own.headingEnabled !== false,
         autopilotEnabled: own.autopilotEnabled,
         routeTurning: own.routeTurning,
@@ -776,6 +862,20 @@ module.exports = function ajrmMarineSimulator(app) {
     }
     const activeTargets = [...targets.values()].filter((target) => target.enabled).length
     app.setPluginStatus?.(`v${packageInfo.version} - own boat + ${activeTargets} AIS targets/stations`)
+  }
+
+  function ownMotionMode() {
+    if (['stationary', 'self', 'route'].includes(own?.motionMode)) return own.motionMode
+    if (own?.gpxRoute?.enabled && own.gpxRoute.points.length > 0) return 'route'
+    if ((own?.speedKn || 0) <= 0) return 'stationary'
+    return 'self'
+  }
+
+  function ownMotionModeFromConfig(ownConfig, gpxRoute) {
+    if (['stationary', 'self', 'route'].includes(ownConfig.motionMode)) return ownConfig.motionMode
+    if (gpxRoute?.enabled && gpxRoute.points.length > 0) return 'route'
+    if (ownConfig.autopilotEnabled === true) return 'self'
+    return clamp(ownConfig.initialSpeedKn, 0, MAX_OWN_SPEED_KN, 0) > 0 ? 'self' : 'stationary'
   }
 
   function normalizeConfig(props = {}) {
@@ -887,6 +987,7 @@ module.exports = function ajrmMarineSimulator(app) {
         },
         initialHeadingDeg: round(own.headingDeg, 0),
         initialSpeedKn: round(own.speedKn, 1),
+        motionMode: ownMotionMode(),
         headingEnabled: own.headingEnabled !== false,
         autopilotEnabled: own.autopilotEnabled === true,
         legDuration: own.legDuration,
@@ -923,6 +1024,7 @@ module.exports = function ajrmMarineSimulator(app) {
       startPosition,
       headingDeg: normalizeDeg(ownConfig.initialHeadingDeg ?? ownConfig.initialCourseDeg ?? 90),
       speedKn: clamp(ownConfig.initialSpeedKn, 0, MAX_OWN_SPEED_KN, 0),
+      motionMode: ownMotionModeFromConfig(ownConfig, gpxRoute),
       headingEnabled: ownConfig.headingEnabled !== false,
       autopilotEnabled: ownConfig.autopilotEnabled === true,
       legDuration: clamp(ownConfig.legDuration, 10, 86400, DEFAULT_LEG_SECONDS),
@@ -956,6 +1058,7 @@ module.exports = function ajrmMarineSimulator(app) {
       completed: false,
       name: '',
       points: [],
+      playState: 'stopped',
       arrivalRadiusM: DEFAULT_GPX_ARRIVAL_RADIUS_M
     }
   }
@@ -972,6 +1075,7 @@ module.exports = function ajrmMarineSimulator(app) {
       completed: input.completed === true && points.length > 0,
       name: String(input.name || '').trim().slice(0, 120),
       points,
+      playState: gpxPlayState(input.playState, points.length > 0 && input.enabled !== false ? 'playing' : 'stopped'),
       arrivalRadiusM: clamp(input.arrivalRadiusM, 5, 500, DEFAULT_GPX_ARRIVAL_RADIUS_M)
     }
   }
@@ -985,6 +1089,7 @@ module.exports = function ajrmMarineSimulator(app) {
       name: route.name || '',
       pointCount: points.length,
       index: safeIndex,
+      playState: gpxPlayState(route.playState, route.enabled === true ? 'playing' : 'stopped'),
       arrivalRadiusM: route.arrivalRadiusM || DEFAULT_GPX_ARRIVAL_RADIUS_M,
       nextPoint: points[safeIndex]
         ? {
@@ -993,6 +1098,10 @@ module.exports = function ajrmMarineSimulator(app) {
           }
         : null
     }
+  }
+
+  function gpxPlayState(value, fallback = 'stopped') {
+    return ['stopped', 'paused', 'playing'].includes(value) ? value : fallback
   }
 
   function initialEnvironment(config) {
@@ -1163,7 +1272,7 @@ module.exports = function ajrmMarineSimulator(app) {
       properties: {
         id: { type: 'string', title: 'Internal id' },
         enabled: { type: 'boolean', title: 'Enabled', default: true },
-        autopilotEnabled: { type: 'boolean', title: 'Autopilot enabled', default: true },
+        autopilotEnabled: { type: 'boolean', title: 'Auto-reverse enabled', default: true },
         name: { type: 'string', title: 'Vessel name' },
         mmsi: { type: 'string', title: 'MMSI' },
         callsign: { type: 'string', title: 'Call sign' },
@@ -1228,7 +1337,7 @@ module.exports = function ajrmMarineSimulator(app) {
         },
         sourceName: { type: 'string', title: 'Signal K source name', default: 'ajrm-marine-simulator' },
         outputPeriod: { type: 'number', title: 'Simulation tick period (seconds)', default: DEFAULT_PERIOD_SECONDS },
-        targetAutopilotEnabled: { type: 'boolean', title: 'Master AIS target autopilot routes', default: true },
+        targetAutopilotEnabled: { type: 'boolean', title: 'Master AIS target auto-reverse routes', default: true },
         routeTurnRudderAngleDeg: { type: 'number', title: 'Route turn rudder angle', default: DEFAULT_ROUTE_RUDDER_DEG },
         own: {
           type: 'object',
@@ -1246,7 +1355,7 @@ module.exports = function ajrmMarineSimulator(app) {
             initialHeadingDeg: { type: 'number', title: 'Initial heading', default: 90 },
             initialSpeedKn: { type: 'number', title: 'Initial speed knots', default: 0 },
             headingEnabled: { type: 'boolean', title: 'Publish own boat heading', default: true },
-            autopilotEnabled: { type: 'boolean', title: 'Own boat autopilot enabled', default: false },
+            autopilotEnabled: { type: 'boolean', title: 'Own boat auto-reverse enabled', default: false },
             legDuration: { type: 'number', title: 'Own boat route leg seconds', default: DEFAULT_LEG_SECONDS },
             gpsFaultMode: { type: 'string', title: 'Own boat GPS fault mode', enum: GPS_FAULT_MODES, default: 'normal' }
           }
