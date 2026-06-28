@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.11
+
+- Keep the selected GPX filename visible in the file chooser after loading.
+- Make GPX route progress text larger and brighter, and avoid duplicating the
+  filename in the progress line.
+
 ## 0.5.10
 
 - Add GPX route loading to the simulator web UI for own-boat steering.

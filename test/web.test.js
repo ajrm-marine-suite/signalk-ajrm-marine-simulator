@@ -28,9 +28,11 @@ test('web app exposes GPX route loading controls', () => {
   assert.match(html, /GPX Route/)
   assert.match(html, /id="gpxFile"/)
   assert.match(html, /id="clearGpxRoute"/)
+  assert.match(html, /route-status/)
   assert.match(html, /parseGpxPoints/)
   assert.match(html, /\/own\/gpx-route/)
   assert.match(html, /setInterval\(refresh, 5000\)/)
+  assert.doesNotMatch(html, /gpxFile\.value = ""/)
 })
 
 test('web app keeps target actions and toggles in separate columns', () => {

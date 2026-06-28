@@ -128,7 +128,7 @@
 
       input[type="file"] {
         padding: 4px;
-        font-size: 11px;
+        font-size: 12px;
       }
 
       button {
@@ -229,6 +229,13 @@
         font-size: 10px;
       }
 
+      .route-status {
+        margin-top: 8px;
+        color: #d7edf2;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
       .adjust {
         display: grid;
         grid-template-columns: 28px 1fr 28px;
@@ -303,7 +310,7 @@
           <div class="button-row">
             <button id="clearGpxRoute" type="button">Clear GPX</button>
           </div>
-          <div id="gpxStatus" class="hint">No GPX route loaded.</div>
+          <div id="gpxStatus" class="route-status">No GPX route loaded.</div>
         </section>
       </div>
 
@@ -446,9 +453,8 @@
           els.gpxStatus.textContent = "No GPX route loaded.";
           return;
         }
-        const name = route.name ? `${route.name} · ` : "";
         const active = route.enabled ? "active" : route.completed ? "complete" : "paused";
-        els.gpxStatus.textContent = `${name}${route.pointCount} points · waypoint ${Math.min(route.index + 1, route.pointCount)} of ${route.pointCount} · ${active}`;
+        els.gpxStatus.textContent = `${route.pointCount} points · waypoint ${Math.min(route.index + 1, route.pointCount)} of ${route.pointCount} · ${active}`;
       }
 
       function renderEnvironment(env) {
@@ -599,7 +605,6 @@
             name: file.name.replace(/\.gpx$/i, ""),
             points
           });
-          els.gpxFile.value = "";
         } catch (error) {
           els.status.textContent = error.message;
         }
