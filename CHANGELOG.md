@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.13
+
+- Stabilise GPX route following at very high simulator speeds by breaking each
+  tick into small steering steps, preventing own boat from overshooting a
+  waypoint and turning back repeatedly.
+
 ## 0.5.12
 
 - Raise own-boat simulator speed limit from 30 knots to 999 knots for

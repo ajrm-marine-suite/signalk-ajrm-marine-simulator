@@ -391,6 +391,42 @@ test('loaded GPX route starts own boat at first point and steers toward next poi
   }
 })
 
+test('GPX route following does not bounce around waypoints at high speed', async () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      outputPeriod: 0.2,
+      own: { initialHeadingDeg: 180, initialSpeedKn: 999 },
+      environment: { currentDriftKn: 0, currentVarying: false }
+    })
+    invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'High speed route',
+      points: [
+        { latitude: 56.300000, longitude: -5.700000 },
+        { latitude: 56.301000, longitude: -5.700000 },
+        { latitude: 56.302000, longitude: -5.700000 }
+      ]
+    })
+
+    invoke(routes, 'POST', '/output', { enabled: true })
+    await delay(700)
+    const state = invoke(routes, 'GET', '/state')
+    assert.equal(state.own.gpxRoute.completed, true)
+    assert.equal(state.own.gpxRoute.index, 2)
+    assert.equal(state.own.speedKn, 0)
+    assert.ok(Math.abs(state.own.latitude - 56.302) < 0.0002)
+    assert.ok(Math.abs(state.own.longitude + 5.7) < 0.0002)
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('own boat speed controls allow high-speed testing up to 999 knots', () => {
   const routes = new Map()
   const app = {

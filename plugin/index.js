@@ -23,6 +23,7 @@ const MAX_OWN_SPEED_KN = 999
 const DEFAULT_ROUTE_RUDDER_DEG = 30
 const DEFAULT_GPX_ARRIVAL_RADIUS_M = 25
 const MAX_GPX_ROUTE_POINTS = 2000
+const MAX_GPX_SUBSTEPS = 500
 const RUNTIME_SETTINGS_VERSION = 1
 const RUNTIME_SETTINGS_FILE_ENV = 'AJRM_MARINE_SIMULATOR_SETTINGS_FILE'
 const TURN_RATE_PER_RUDDER_DEG_PER_SECOND = 0.08
@@ -471,7 +472,8 @@ module.exports = function ajrmMarineSimulator(app) {
   function advanceOwn(dt) {
     own.rateOfTurnDegPerSecond = 0
     if (own.gpxRoute?.enabled && own.gpxRoute.points.length > 0) {
-      steerOwnToGpxRoute()
+      advanceOwnAlongGpxRoute(dt)
+      return
     } else if (own.autopilotEnabled) {
       if (!own.routeTurning && (Date.now() - own.legStartMs) / 1000 >= own.legDuration) {
         own.routeTargetDeg = normalizeDeg(own.headingDeg + 180)
@@ -483,6 +485,30 @@ module.exports = function ajrmMarineSimulator(app) {
     const moved = movePoint(own.latitude, own.longitude, motion.courseDeg, motion.speedOverGroundMps * dt)
     own.latitude = moved.latitude
     own.longitude = moved.longitude
+  }
+
+  function advanceOwnAlongGpxRoute(dt) {
+    const route = own.gpxRoute
+    const motion = ownGroundMotion()
+    const maxStepM = Math.max(2, (route.arrivalRadiusM || DEFAULT_GPX_ARRIVAL_RADIUS_M) / 2)
+    const substeps = clampInteger(
+      Math.ceil((motion.speedOverGroundMps * dt) / maxStepM),
+      1,
+      MAX_GPX_SUBSTEPS,
+      1
+    )
+    const stepDt = dt / substeps
+
+    for (let step = 0; step < substeps; step += 1) {
+      steerOwnToGpxRoute()
+      if (!own.gpxRoute?.enabled) return
+      const stepMotion = ownGroundMotion()
+      const moved = movePoint(own.latitude, own.longitude, stepMotion.courseDeg, stepMotion.speedOverGroundMps * stepDt)
+      own.latitude = moved.latitude
+      own.longitude = moved.longitude
+    }
+
+    steerOwnToGpxRoute()
   }
 
   function steerOwnToGpxRoute() {
