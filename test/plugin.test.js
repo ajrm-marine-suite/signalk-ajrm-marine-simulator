@@ -482,6 +482,36 @@ test('own boat speed controls allow high-speed testing up to 999 knots', () => {
   }
 })
 
+test('own boat speed buttons step by one knot and preserve GPX route mode', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 4.2 }
+    })
+    let state = invoke(routes, 'POST', '/own/speed', { direction: 'up' })
+    assert.equal(state.own.speedKn, 5.2)
+    state = invoke(routes, 'POST', '/own/speed', { direction: 'down' })
+    assert.equal(state.own.speedKn, 4.2)
+
+    state = invoke(routes, 'POST', '/own/motion-mode', { mode: 'route' })
+    assert.equal(state.own.motionMode, 'route')
+    state = invoke(routes, 'POST', '/own/speed', { direction: 'up' })
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.speedKn, 5.2)
+    state = invoke(routes, 'POST', '/own/controls', { speedKn: 3.7 })
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.speedKn, 3.7)
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('own vessel motion mode route switches stationary, self steering and GPX route following', () => {
   const routes = new Map()
   const app = {
@@ -505,6 +535,11 @@ test('own vessel motion mode route switches stationary, self steering and GPX ro
     state = invoke(routes, 'POST', '/own/controls', { speedKn: 5 })
     state = invoke(routes, 'POST', '/own/motion-mode', { mode: 'self' })
     assert.equal(state.own.motionMode, 'self')
+
+    state = invoke(routes, 'POST', '/own/motion-mode', { mode: 'route' })
+    assert.equal(state.own.motionMode, 'route')
+    assert.equal(state.own.gpxRoute.pointCount, 0)
+    assert.equal(state.own.gpxRoute.enabled, false)
 
     state = invoke(routes, 'POST', '/own/gpx-route', {
       name: 'Remembered route',

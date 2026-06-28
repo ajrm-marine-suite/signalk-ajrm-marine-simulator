@@ -229,8 +229,14 @@ module.exports = function ajrmMarineSimulator(app) {
 
     router.post('/own/speed', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
-      own.motionMode = 'self'
-      own.speedKn = clamp(own.speedKn + (req.body?.direction === 'down' ? -0.5 : 0.5), 0, MAX_OWN_SPEED_KN, own.speedKn)
+      const nextSpeed = clamp(own.speedKn + (req.body?.direction === 'down' ? -1 : 1), 0, MAX_OWN_SPEED_KN, own.speedKn)
+      if (own.motionMode === 'route') {
+        own.speedKn = nextSpeed
+      } else {
+        own.motionMode = nextSpeed > 0 ? 'self' : 'stationary'
+        own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+        own.speedKn = nextSpeed
+      }
       saveRuntimeSettings()
       publishOwn({ includePosition: false })
       res.json(publicState())
@@ -263,17 +269,15 @@ module.exports = function ajrmMarineSimulator(app) {
       } else if (mode === 'self') {
         own.motionMode = 'self'
         own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
-      } else if (own.gpxRoute?.points?.length > 0) {
+      } else {
         own.motionMode = 'route'
         own.gpxRoute = {
-          ...own.gpxRoute,
-          enabled: own.gpxRoute.playState === 'playing',
+          ...(own.gpxRoute || emptyGpxRoute()),
+          enabled: own.gpxRoute?.playState === 'playing' && (own.gpxRoute?.points?.length || 0) > 0,
           completed: false,
-          playState: own.gpxRoute.playState || 'stopped'
+          playState: own.gpxRoute?.playState || 'stopped'
         }
         own.autopilotEnabled = false
-      } else {
-        return res.status(400).json({ error: 'Load a GPX route before selecting route following' })
       }
       own.routeTurning = false
       own.routeTargetDeg = null
@@ -719,9 +723,14 @@ module.exports = function ajrmMarineSimulator(app) {
       own.headingDeg = normalizeDeg(Number(values.courseDeg))
     }
     if (values.speedKn != null) {
-      own.motionMode = Number(values.speedKn) > 0 ? 'self' : 'stationary'
-      own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
-      own.speedKn = clamp(values.speedKn, 0, MAX_OWN_SPEED_KN, own.speedKn)
+      const nextSpeed = clamp(values.speedKn, 0, MAX_OWN_SPEED_KN, own.speedKn)
+      if (own.motionMode === 'route') {
+        own.speedKn = nextSpeed
+      } else {
+        own.motionMode = nextSpeed > 0 ? 'self' : 'stationary'
+        own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
+        own.speedKn = nextSpeed
+      }
     }
     if (values.headingEnabled != null) own.headingEnabled = values.headingEnabled === true
     if (values.gpsFaultMode != null && GPS_FAULT_MODES.includes(String(values.gpsFaultMode))) {

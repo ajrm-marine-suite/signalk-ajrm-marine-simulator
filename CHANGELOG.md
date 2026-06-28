@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.20
+
+- Allow selecting GPX route mode before a GPX file has been loaded.
+- Keep GPX route mode selected when changing route speed.
+- Change own-vessel speed +/- controls from half-knot to one-knot steps while
+  leaving numeric speed fields at 0.1-knot precision.
+
 ## 0.5.19
 
 - Remove the manual `Update now` button from the simulator web app; automatic
