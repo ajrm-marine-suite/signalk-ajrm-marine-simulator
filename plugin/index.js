@@ -769,7 +769,15 @@ module.exports = function ajrmMarineSimulator(app) {
   }
 
   function updateEnvironment(values) {
-    for (const [key, limits] of Object.entries({
+    const minutes = (Date.now() - startedAtMs) / 60000
+    const phase = {
+      depth: Math.sin(minutes / 4),
+      windSpeed: Math.sin(minutes / 3),
+      windAngle: Math.sin(minutes / 5),
+      currentDrift: Math.sin(minutes / 6),
+      currentSet: Math.sin(minutes / 8)
+    }
+    const numericFields = {
       depthM: [0, 250],
       apparentWindSpeedKn: [0, 80],
       apparentWindAngleDeg: [-180, 180],
@@ -777,18 +785,41 @@ module.exports = function ajrmMarineSimulator(app) {
       currentSetDeg: [0, 360],
       engineRoomTemperatureC: [-10, 120],
       exhaustWaterTemperatureC: [-10, 120]
-    })) {
+    }
+    for (const [key, limits] of Object.entries(numericFields)) {
       if (values[key] != null) env[key] = clamp(values[key], limits[0], limits[1], env[key])
     }
     for (const key of ['depthVarying', 'windVarying', 'currentVarying']) {
       if (values[key] != null) env[key] = values[key] === true
     }
     if (values.enabled != null) env.enabled = values.enabled === true
-    env.baseDepthM = env.depthM
-    env.baseApparentWindSpeedKn = env.apparentWindSpeedKn
-    env.baseApparentWindAngleDeg = env.apparentWindAngleDeg
-    env.baseCurrentDriftKn = env.currentDriftKn
-    env.baseCurrentSetDeg = env.currentSetDeg
+    if (values.depthM != null || values.depthVarying != null) {
+      env.baseDepthM = env.depthVarying
+        ? env.depthM - phase.depth * env.depthVariationM
+        : env.depthM
+    }
+    if (values.apparentWindSpeedKn != null || values.windVarying != null) {
+      env.baseApparentWindSpeedKn = env.windVarying
+        ? env.apparentWindSpeedKn - phase.windSpeed * env.windVariationKn
+        : env.apparentWindSpeedKn
+    }
+    if (values.apparentWindAngleDeg != null || values.windVarying != null) {
+      env.baseApparentWindAngleDeg = env.windVarying
+        ? env.apparentWindAngleDeg - phase.windAngle * env.windShiftDeg
+        : env.apparentWindAngleDeg
+    }
+    if (values.currentDriftKn != null || values.currentVarying != null) {
+      env.baseCurrentDriftKn = env.currentVarying
+        ? env.currentDriftKn - phase.currentDrift * env.currentVariationKn
+        : env.currentDriftKn
+    }
+    if (values.currentSetDeg != null || values.currentVarying != null) {
+      env.baseCurrentSetDeg = env.currentVarying
+        ? normalizeDeg(env.currentSetDeg - phase.currentSet * env.currentShiftDeg)
+        : env.currentSetDeg
+    }
+    if (values.engineRoomTemperatureC != null) env.baseEngineRoomTemperatureC = env.engineRoomTemperatureC
+    if (values.exhaustWaterTemperatureC != null) env.baseExhaustWaterTemperatureC = env.exhaustWaterTemperatureC
   }
 
   function updateTarget(id, values) {

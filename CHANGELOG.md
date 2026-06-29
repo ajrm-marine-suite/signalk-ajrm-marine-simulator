@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.21
+
+- Keep manually edited environment values stable while variation is enabled.
+  Editing simulated depth now rebases the depth variation phase instead of
+  producing alternating manual and varied depth samples.
+- Avoid rebasing unrelated wind, tide, and temperature baselines when only one
+  environment value is changed.
+
 ## 0.5.20
 
 - Allow selecting GPX route mode before a GPX file has been loaded.

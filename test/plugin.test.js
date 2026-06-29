@@ -869,6 +869,43 @@ test('disabled environment clears simulated environment values and removes curre
   }
 })
 
+test('manual depth edit remains stable while depth variation is enabled', async () => {
+  const messages = []
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage(id, delta) {
+      messages.push({ id, delta })
+    }
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      outputPeriod: 0.2,
+      environment: { depthM: 8, depthVariationM: 50, depthVarying: true }
+    })
+    invoke(routes, 'POST', '/output', { enabled: true })
+    messages.length = 0
+
+    invoke(routes, 'POST', '/environment', { depthM: 5.8 })
+    await new Promise((resolve) => setTimeout(resolve, 260))
+
+    const ownMessages = messages.filter((message) => message.delta.context === 'vessels.self')
+    const depthValues = ownMessages
+      .map((message) => Object.fromEntries(
+        message.delta.updates[0].values.map((item) => [item.path, item.value])
+      )['environment.depth.belowTransducer'])
+      .filter((value) => Number.isFinite(value))
+
+    assert.ok(depthValues.length >= 2)
+    assert.ok(Math.abs(depthValues[0] - 5.8) < 0.001)
+    assert.ok(Math.abs(depthValues.at(-1) - 5.8) < 0.1)
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('own heading output can be disabled while COG remains available', () => {
   const messages = []
   const routes = new Map()
