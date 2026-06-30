@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.23
+
+- Clone repeated GPS fault-mode schema enums so the Signal K plugin CI schema
+  validator sees a JSON-clean plugin configuration schema.
+
 ## 0.5.21
 
 - Keep manually edited environment values stable while variation is enabled.

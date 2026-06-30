@@ -1341,7 +1341,7 @@ module.exports = function ajrmMarineSimulator(app) {
         speedKn: { type: 'number', title: 'Speed over ground (kn)', default: 2 },
         legDuration: { type: 'number', title: 'Route leg seconds', default: DEFAULT_LEG_SECONDS },
         emergencyMode: { type: 'string', title: 'Startup emergency mode', enum: Object.keys(EMERGENCY_MODES), default: 'none' },
-        gpsFaultMode: { type: 'string', title: 'GPS fault mode', enum: GPS_FAULT_MODES, default: 'normal' }
+        gpsFaultMode: { type: 'string', title: 'GPS fault mode', enum: [...GPS_FAULT_MODES], default: 'normal' }
       }
     }
   }
@@ -1406,7 +1406,7 @@ module.exports = function ajrmMarineSimulator(app) {
             headingEnabled: { type: 'boolean', title: 'Publish own boat heading', default: true },
             autopilotEnabled: { type: 'boolean', title: 'Own boat auto-reverse enabled', default: false },
             legDuration: { type: 'number', title: 'Own boat route leg seconds', default: DEFAULT_LEG_SECONDS },
-            gpsFaultMode: { type: 'string', title: 'Own boat GPS fault mode', enum: GPS_FAULT_MODES, default: 'normal' }
+            gpsFaultMode: { type: 'string', title: 'Own boat GPS fault mode', enum: [...GPS_FAULT_MODES], default: 'normal' }
           }
         },
         environment: {
