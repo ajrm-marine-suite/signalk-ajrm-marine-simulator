@@ -453,13 +453,25 @@ test('loaded GPX route starts own boat at first point and steers toward next poi
 
 test('GPX route following does not bounce around waypoints at high speed', async () => {
   const routes = new Map()
+  const realDateNow = Date.now
+  const realSetInterval = global.setInterval
+  const realClearInterval = global.clearInterval
+  let now = Date.parse('2026-06-30T12:00:00.000Z')
+  let tick = null
+  Date.now = () => now
+  global.setInterval = (handler) => {
+    tick = handler
+    return 1
+  }
+  global.clearInterval = () => {}
   const app = {
     setPluginStatus() {},
     handleMessage() {}
   }
-  const plugin = createPlugin(app)
-  plugin.registerWithRouter(routerMap(routes))
+  let plugin
   try {
+    plugin = createPlugin(app)
+    plugin.registerWithRouter(routerMap(routes))
     plugin.start({
       outputPeriod: 0.2,
       own: { initialHeadingDeg: 180, initialSpeedKn: 999 },
@@ -476,7 +488,10 @@ test('GPX route following does not bounce around waypoints at high speed', async
     invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
 
     invoke(routes, 'POST', '/output', { enabled: true })
-    await delay(700)
+    for (let i = 0; i < 4; i += 1) {
+      now += 200
+      tick()
+    }
     const state = invoke(routes, 'GET', '/state')
     assert.equal(state.own.gpxRoute.completed, true)
     assert.equal(state.own.gpxRoute.playState, 'stopped')
@@ -485,7 +500,10 @@ test('GPX route following does not bounce around waypoints at high speed', async
     assert.ok(Math.abs(state.own.latitude - 56.302) < 0.0002)
     assert.ok(Math.abs(state.own.longitude + 5.7) < 0.0002)
   } finally {
-    plugin.stop()
+    plugin?.stop()
+    Date.now = realDateNow
+    global.setInterval = realSetInterval
+    global.clearInterval = realClearInterval
   }
 })
 

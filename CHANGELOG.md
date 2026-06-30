@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.24
+
+- Make the high-speed GPX route regression test drive the simulator clock
+  explicitly so Windows CI does not depend on real timer scheduling.
+
 ## 0.5.23
 
 - Clone repeated GPS fault-mode schema enums so the Signal K plugin CI schema
