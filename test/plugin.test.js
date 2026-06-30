@@ -83,6 +83,38 @@ test('own boat drifts with tide when through-water speed is zero', () => {
   assert.ok(Math.abs(motion.speedOverGroundMps / KNOTS_TO_MPS - 1.2) < 0.001)
 })
 
+test('stationary own-vessel mode publishes fixed GPS with zero SOG despite tide', () => {
+  const messages = []
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage(id, delta) {
+      messages.push({ id, delta })
+    }
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      outputEnabled: false,
+      own: { initialHeadingDeg: 90, initialSpeedKn: 0, motionMode: 'stationary' },
+      environment: { currentSetDeg: 45, currentDriftKn: 2, currentVarying: false },
+      targets: [],
+      fixedStations: []
+    })
+    invoke(routes, 'POST', '/output', { enabled: true })
+
+    const ownValues = latestValuesByPath(messages, 'vessels.self')
+    assert.equal(ownValues['navigation.speedOverGround'], 0)
+    assert.equal(ownValues['navigation.speedThroughWater'], 0)
+    assert.equal(ownValues['navigation.state'], 'stopped')
+    assert.equal(ownValues['environment.current.drift'], 2 * KNOTS_TO_MPS)
+    assert.equal(ownValues['environment.tide.drift'], 2 * KNOTS_TO_MPS)
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('plugin publishes nothing while master output is off, then publishes own and targets when enabled', () => {
   const messages = []
   const routes = new Map()

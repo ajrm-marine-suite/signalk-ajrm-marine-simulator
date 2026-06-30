@@ -365,7 +365,10 @@ module.exports = function ajrmMarineSimulator(app) {
   function ownValues({ includePosition = true } = {}) {
     const gps = ownGpsValues({ includePosition })
     const gpsUnavailable = ownGpsUnavailable()
-    const motion = ownGroundMotion()
+    const stationary = ownMotionMode() === 'stationary'
+    const motion = stationary
+      ? { courseDeg: own.headingDeg, speedOverGroundMps: 0 }
+      : ownGroundMotion()
     const values = [
       {
         path: 'navigation.courseOverGroundTrue',
@@ -375,10 +378,10 @@ module.exports = function ajrmMarineSimulator(app) {
         path: 'navigation.speedOverGround',
         value: gpsUnavailable ? null : motion.speedOverGroundMps
       },
-      { path: 'navigation.speedThroughWater', value: own.speedKn * KNOTS_TO_MPS },
+      { path: 'navigation.speedThroughWater', value: stationary ? 0 : own.speedKn * KNOTS_TO_MPS },
       { path: 'navigation.rateOfTurn', value: rawDegToRad(own.rateOfTurnDegPerSecond || 0) },
       { path: 'steering.rudderAngle', value: rawDegToRad(own.rudderAngleDeg || 0) },
-      { path: 'navigation.state', value: own.speedKn > 0 ? 'underWay' : 'stopped' }
+      { path: 'navigation.state', value: stationary || own.speedKn <= 0 ? 'stopped' : 'underWay' }
     ]
     values.push(...environmentValues())
     if (own.headingEnabled !== false) values.splice(1, 0, { path: 'navigation.headingTrue', value: degToRad(own.headingDeg) })

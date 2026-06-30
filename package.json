@@ -1,6 +1,6 @@
 {
   "name": "signalk-ajrm-marine-simulator",
-  "version": "0.5.21",
+  "version": "0.5.22",
   "description": "Own-vessel, environment, GNSS, and AIS target simulator for AJRM Marine Suite testing.",
   "main": "plugin/index.js",
   "scripts": {
