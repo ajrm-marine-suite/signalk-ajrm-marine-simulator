@@ -233,7 +233,7 @@ module.exports = function ajrmMarineSimulator(app) {
       if (own.motionMode === 'route') {
         own.speedKn = nextSpeed
       } else {
-        own.motionMode = nextSpeed > 0 ? 'self' : 'stationary'
+        if (own.motionMode === 'stationary' && nextSpeed > 0) own.motionMode = 'self'
         own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
         own.speedKn = nextSpeed
       }
@@ -730,7 +730,7 @@ module.exports = function ajrmMarineSimulator(app) {
       if (own.motionMode === 'route') {
         own.speedKn = nextSpeed
       } else {
-        own.motionMode = nextSpeed > 0 ? 'self' : 'stationary'
+        if (own.motionMode === 'stationary' && nextSpeed > 0) own.motionMode = 'self'
         own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
         own.speedKn = nextSpeed
       }

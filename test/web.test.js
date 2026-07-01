@@ -62,7 +62,8 @@ test('web app exposes GPX route loading controls', () => {
 })
 
 test('web app exposes own vessel motion modes', () => {
-  assert.match(html, /data-motion-mode="stationary"[\s\S]*Stationary/)
+  assert.match(html, /data-motion-mode="stationary"[\s\S]*Docked \/ anchored/)
+  assert.match(html, /Self steering at 0 kn to test drifting in tide/)
   assert.match(html, /data-motion-mode="self"[\s\S]*Self steering/)
   assert.match(html, /data-motion-mode="route"[\s\S]*GPX route/)
   assert.match(html, /data-motion-panel="stationary"/)

@@ -562,6 +562,38 @@ test('own boat speed buttons step by one knot and preserve GPX route mode', () =
   }
 })
 
+test('self steering at zero knots remains able to drift in tide', () => {
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage() {}
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 2, motionMode: 'self' }
+    })
+    let state = invoke(routes, 'POST', '/own/controls', { speedKn: 0 })
+    assert.equal(state.own.motionMode, 'self')
+    assert.equal(state.own.speedKn, 0)
+
+    state = invoke(routes, 'POST', '/own/speed', { direction: 'up' })
+    assert.equal(state.own.motionMode, 'self')
+    assert.equal(state.own.speedKn, 1)
+
+    state = invoke(routes, 'POST', '/own/motion-mode', { mode: 'stationary' })
+    assert.equal(state.own.motionMode, 'stationary')
+    assert.equal(state.own.speedKn, 0)
+
+    state = invoke(routes, 'POST', '/own/speed', { direction: 'up' })
+    assert.equal(state.own.motionMode, 'self')
+    assert.equal(state.own.speedKn, 1)
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('own vessel motion mode route switches stationary, self steering and GPX route following', () => {
   const routes = new Map()
   const app = {

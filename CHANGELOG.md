@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.25
+
+- Rename own-vessel Stationary mode in the web app to Docked / anchored and
+  explain that Self steering at 0 kn is the mode for testing tide drift.
+- Keep Self steering selected when the own-vessel speed is set to 0 kn, so a
+  stopped boat can still drift in simulated current unless Docked / anchored is
+  explicitly selected.
+
 ## 0.5.24
 
 - Make the high-speed GPX route regression test drive the simulator clock

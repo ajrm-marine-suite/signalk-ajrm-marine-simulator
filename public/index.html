@@ -469,12 +469,14 @@
           <section class="panel">
             <h2>Own Vessel Mode</h2>
             <div class="segmented" role="group" aria-label="Own vessel motion mode">
-              <button type="button" data-motion-mode="stationary">Stationary</button>
+              <button type="button" data-motion-mode="stationary">Docked / anchored</button>
               <button type="button" data-motion-mode="self">Self steering</button>
               <button type="button" data-motion-mode="route">GPX route</button>
             </div>
 
-            <div class="mode-panel" data-motion-panel="stationary"></div>
+            <div class="mode-panel" data-motion-panel="stationary">
+              <p class="route-status">Own vessel is fixed to the ground with zero STW/SOG. Use Self steering at 0 kn to test drifting in tide.</p>
+            </div>
 
             <div class="mode-panel" data-motion-panel="self">
               <section>
