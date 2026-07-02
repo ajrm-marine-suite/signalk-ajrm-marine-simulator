@@ -383,13 +383,13 @@ module.exports = function ajrmMarineSimulator(app) {
       { path: 'steering.rudderAngle', value: rawDegToRad(own.rudderAngleDeg || 0) },
       { path: 'navigation.state', value: stationary || own.speedKn <= 0 ? 'stopped' : 'underWay' }
     ]
-    values.push(...environmentValues())
+    values.push(...environmentValues({ includeCurrent: !gpsUnavailable }))
     if (own.headingEnabled !== false) values.splice(1, 0, { path: 'navigation.headingTrue', value: degToRad(own.headingDeg) })
     values.push(...gps)
     return values
   }
 
-  function environmentValues() {
+  function environmentValues({ includeCurrent = true } = {}) {
     if (env.enabled === false) {
       return environmentPaths().map((path) => ({ path, value: null }))
     }
@@ -410,10 +410,10 @@ module.exports = function ajrmMarineSimulator(app) {
       { path: 'environment.wind.speedTrue', value: wind.speedTrue },
       { path: 'environment.wind.directionTrue', value: degToRad(wind.directionTrue) },
       { path: 'environment.wind.angleTrueGround', value: wind.angleTrueGround },
-      { path: 'environment.current.setTrue', value: degToRad(env.currentSetDeg) },
-      { path: 'environment.current.drift', value: env.currentDriftKn * KNOTS_TO_MPS },
-      { path: 'environment.tide.setTrue', value: degToRad(env.currentSetDeg) },
-      { path: 'environment.tide.drift', value: env.currentDriftKn * KNOTS_TO_MPS },
+      { path: 'environment.current.setTrue', value: includeCurrent ? degToRad(env.currentSetDeg) : null },
+      { path: 'environment.current.drift', value: includeCurrent ? env.currentDriftKn * KNOTS_TO_MPS : null },
+      { path: 'environment.tide.setTrue', value: includeCurrent ? degToRad(env.currentSetDeg) : null },
+      { path: 'environment.tide.drift', value: includeCurrent ? env.currentDriftKn * KNOTS_TO_MPS : null },
       { path: 'environment.inside.engineRoom.temperature', value: env.engineRoomTemperatureC + 273.15 },
       { path: 'propulsion.main.temperature', value: env.exhaustWaterTemperatureC + 273.15 },
       { path: 'electrical.batteries.house.voltage', value: env.batteryVoltage },

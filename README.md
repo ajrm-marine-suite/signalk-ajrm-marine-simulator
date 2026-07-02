@@ -74,10 +74,10 @@ own-vessel SOG/STW and current/tide drift go to zero, and simulated AIS target
 positions are cleared. This prevents Capture, Traffic, and Display from
 reacting to stale simulator movement after a test run ends.
 
-Version `0.1.8` treats own-vessel GPS loss as loss of GPS-derived position,
-SOG, and COG. It still publishes heading, STW, current/tide, wind, and depth so
-DR Plotter can test dead reckoning without other apps seeing pseudo-GPS
-movement.
+Version `0.5.26` treats own-vessel GPS loss as loss of GPS-derived position,
+SOG, COG, and GPS-derived current/tide set and drift. It still publishes
+heading, STW, wind, and depth so DR Plotter can test dead reckoning using the
+last trusted current vector rather than a pretend live tide measurement.
 
 Use Own GPS mode:
 

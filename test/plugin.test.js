@@ -834,7 +834,7 @@ test('reset clears saved simulator settings and restores configured defaults', (
   }
 })
 
-test('own GPS lost publishes null position', () => {
+test('own GPS lost publishes null GPS-derived navigation and current values', () => {
   const messages = []
   const routes = new Map()
   const app = {
@@ -861,7 +861,11 @@ test('own GPS lost publishes null position', () => {
   assert.equal(byPath['navigation.speedOverGround'], null)
   assert.equal(byPath['navigation.courseOverGroundTrue'], null)
   assert.ok(byPath['navigation.speedThroughWater'] >= 0)
-  assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'environment.current.drift'), true)
+  assert.equal(byPath['environment.current.setTrue'], null)
+  assert.equal(byPath['environment.current.drift'], null)
+  assert.equal(byPath['environment.tide.setTrue'], null)
+  assert.equal(byPath['environment.tide.drift'], null)
+  assert.equal(typeof byPath['environment.wind.speedApparent'], 'number')
   plugin.stop()
 })
 

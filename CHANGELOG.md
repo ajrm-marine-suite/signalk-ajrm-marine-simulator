@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.26
+
+- Clear GPS-derived current/tide set and drift when own-vessel GPS is lost or
+  intermittent-off, while leaving heading, STW, wind, and depth available.
+
 ## 0.5.25
 
 - Rename own-vessel Stationary mode in the web app to Docked / anchored and
