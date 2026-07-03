@@ -1,6 +1,6 @@
 {
   "name": "signalk-ajrm-marine-simulator",
-  "version": "0.5.26",
+  "version": "0.5.27",
   "description": "Own-vessel, environment, GNSS, and AIS target simulator for AJRM Marine Suite testing.",
   "main": "plugin/index.js",
   "scripts": {
@@ -19,7 +19,7 @@
     "navigation"
   ],
   "author": "Anthony McDonald, with assistance from William McAusland",
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git"
