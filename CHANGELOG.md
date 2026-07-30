@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Publish simulated IMO registration numbers as canonical Signal K static
+  vessel data, avoiding static/dynamic leaf collisions in Signal K.
+
 ## 0.5.26
 
 - Clear GPS-derived current/tide set and drift when own-vessel GPS is lost or

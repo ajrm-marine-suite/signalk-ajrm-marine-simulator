@@ -548,6 +548,8 @@ module.exports = function ajrmMarineSimulator(app) {
     const rootValue = {}
     if (target.name) rootValue.name = transmittedName(target)
     if (target.callsign) rootValue.communication = { callsignVhf: target.callsign }
+    const imo = canonicalImo(target.imo)
+    if (imo) rootValue.registrations = { imo }
     const values = [
       { path: 'design.aisShipType', value: { id: target.aisShipType, name: AIS_TYPES[target.aisShipType] || 'Unknown' } },
       { path: 'design.length', value: { overall: target.length } },
@@ -560,7 +562,6 @@ module.exports = function ajrmMarineSimulator(app) {
     if (Object.keys(rootValue).length > 0) values.push({ path: '', value: rootValue })
     if (target.destination) values.push({ path: 'navigation.destination.commonName', value: target.destination })
     if (target.eta) values.push({ path: 'navigation.destination.eta', value: target.eta })
-    if (target.imo) values.push({ path: 'registrations.imo', value: target.imo })
     return values
   }
 
@@ -1538,6 +1539,11 @@ function offsetMeters(latitude, longitude, northM, eastM) {
     latitude: latitude + (northM / EARTH_RADIUS_M) * 180 / Math.PI,
     longitude: longitude + (eastM / (EARTH_RADIUS_M * Math.cos(latitudeRad))) * 180 / Math.PI
   }
+}
+
+function canonicalImo(value) {
+  const match = String(value || '').trim().match(/^(?:IMO\s*)?([0-9]{7})$/i)
+  return match ? `IMO ${match[1]}` : ''
 }
 
 function contextForTarget(target) {

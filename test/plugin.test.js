@@ -223,6 +223,7 @@ test('configured AIS target fleet is used at startup', () => {
           name: 'CUSTOM TRADER',
           mmsi: '235901234',
           callsign: 'CUS123',
+          imo: 'IMO9482902',
           grossTonnage: 1500,
           aisShipType: 70,
           aisClass: 'A',
@@ -251,8 +252,10 @@ test('configured AIS target fleet is used at startup', () => {
     const targetValues = allValuesByPath(messages, '235901234')
     assert.deepEqual(targetValues[''], {
       name: 'CUSTOM TRADER',
-      communication: { callsignVhf: 'CUS123' }
+      communication: { callsignVhf: 'CUS123' },
+      registrations: { imo: 'IMO 9482902' }
     })
+    assert.equal(targetValues['registrations.imo'], undefined)
     assert.deepEqual(targetValues['navigation.position'], { latitude: 56.25, longitude: -5.6 })
     assert.equal(targetValues['navigation.speedOverGround'], 6.5 * KNOTS_TO_MPS)
     assert.equal(targetValues['sensors.ais.fromBow'], 30)
