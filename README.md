@@ -6,8 +6,9 @@
 Unified Signal K simulator for AJRM Marine Suite testing.
 
 This plugin combines own-vessel, environment, GNSS, fixed-station, and moving
-AIS target simulation into one Signal K source, `ajrm-marine-simulator`, so
-simulated own-vessel values and simulated AIS targets do not fight each other.
+AIS target simulation under one `ajrm-marine-simulator` source namespace. It
+uses separate simulated NMEA 2000 devices and PGN-shaped updates so recorded
+output resembles the real YDEN data while remaining isolated from live inputs.
 
 ## Safety Switch
 
@@ -38,7 +39,9 @@ Leave output off when sailing for real.
   the master Run simulator switch.
 - Own-vessel auto-reverse heading tests for unattended soak tests.
 - GNSS quality with varying HDOP, VDOP, PDOP, satellites used/in-view, signal
-  strength, and GPS/GLONASS/Galileo/BeiDou constellation summaries.
+  strength, and GPS/GLONASS/Galileo/BeiDou constellation summaries. The
+  satellites-in-view value includes the captured count/satellite object shape
+  with satellite ID, elevation, azimuth, and SNR.
 - GNSS fault modes: `normal`, `degraded`, `lost`, `jump`, `spoof`, and
   `intermittent`.
 - Depth below transducer, transducer-to-keel, and below-keel depth.
@@ -46,7 +49,10 @@ Leave output off when sailing for real.
 - Cross-current/tide set and drift with optional variation.
 - Engine room temperature, exhaust water temperature, and basic battery values.
 - AIS target vessels, fixed AIS stations, target auto-reverse routes, emergency
-  identities, per-target GPS fault modes, and manual target controls.
+- Captured-data-compatible NMEA 2000 grouping for the principal YDEN
+  navigation, instrument, GNSS, autopilot, route, AIS Class A, AIS Class B,
+  and AIS base-station PGNs. The simulator intentionally does not reproduce
+  YDEN's high-rate empty updates because they contain no changed values.
 
 ## DR Testing
 
@@ -93,7 +99,7 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.5.27 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.7.0 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 
@@ -110,4 +116,3 @@ Development assistance: OpenAI Codex helped with code generation, refactoring, a
 This software is licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). You may use, study, share, and modify it under that licence. If you modify it and make it available to users over a network, the corresponding source code must also be made available under the AGPL.
 
 Commercial licensing is available by arrangement for organisations that want different terms.
-

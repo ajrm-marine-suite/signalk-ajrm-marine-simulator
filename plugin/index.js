@@ -22,6 +22,7 @@ const MAX_RUDDER_DEG = 35
 const MAX_OWN_SPEED_KN = 999
 const DEFAULT_ROUTE_RUDDER_DEG = 30
 const DEFAULT_GPX_ARRIVAL_RADIUS_M = 25
+const DEFAULT_MAGNETIC_VARIATION_DEG = -2.72
 const MAX_GPX_ROUTE_POINTS = 2000
 const MAX_GPX_SUBSTEPS = 500
 const RUNTIME_SETTINGS_VERSION = 1
@@ -35,8 +36,8 @@ const AIS_TYPES = {
   36: 'Sailing',
   37: 'Pleasure Craft',
   52: 'Tug',
-  60: 'Passenger',
-  70: 'Cargo'
+  60: 'Passenger ship',
+  70: 'Cargo ship'
 }
 const EMERGENCY_MODES = {
   none: { id: 'none', label: 'Normal', prefix: '', name: '', stateName: '' },
@@ -352,14 +353,97 @@ module.exports = function ajrmMarineSimulator(app) {
     if (!cfg?.outputEnabled || !own) return false
     app.handleMessage(plugin.id, {
       context: 'vessels.self',
-      updates: [
-        {
-          $source: cfg.sourceName,
-          values: ownValues({ includePosition })
-        }
-      ]
+      updates: ownUpdates({ includePosition })
     })
     return true
+  }
+
+  function nmeaUpdate(src, pgn, values) {
+    return {
+      source: {
+        label: 'AJRM Simulator',
+        type: 'NMEA2000',
+        pgn,
+        src: String(src)
+      },
+      timestamp: new Date().toISOString(),
+      values,
+      $source: `${cfg.sourceName}.${src}`
+    }
+  }
+
+  function simulatorUpdate(suffix, values) {
+    return {
+      timestamp: new Date().toISOString(),
+      values,
+      $source: `${cfg.sourceName}.${suffix}`
+    }
+  }
+
+  function ownUpdates({ includePosition = true } = {}) {
+    const gpsUnavailable = ownGpsUnavailable()
+    const stationary = ownMotionMode() === 'stationary'
+    const motion = stationary
+      ? { courseDeg: own.headingDeg, speedOverGroundMps: 0 }
+      : ownGroundMotion()
+    const sats = ownGpsState()
+    const updates = []
+
+    if (own.headingEnabled !== false) {
+      updates.push(nmeaUpdate(4, 127250, [
+        {
+          path: 'navigation.headingMagnetic',
+          value: degToRad(normalizeDeg(own.headingDeg - cfg.magneticVariationDeg))
+        }
+      ]))
+    }
+    updates.push(
+      nmeaUpdate(4, 127245, [{ path: 'steering.rudderAngle', value: rawDegToRad(own.rudderAngleDeg || 0) }]),
+      nmeaUpdate(4, 65305, [{
+        path: 'steering.autopilot.state',
+        value: ownMotionMode() === 'route' ? 'route' : (own.autopilotEnabled ? 'auto' : 'standby')
+      }]),
+      nmeaUpdate(2, 127258, [{ path: 'navigation.magneticVariation', value: rawDegToRad(cfg.magneticVariationDeg) }]),
+      nmeaUpdate(35, 128259, [
+        { path: 'navigation.speedThroughWater', value: stationary ? 0 : own.speedKn * KNOTS_TO_MPS },
+        { path: 'navigation.speedThroughWaterReferenceType', value: 'Paddle wheel' }
+      ]),
+      nmeaUpdate(2, 129026, [
+        { path: 'navigation.speedOverGround', value: gpsUnavailable ? null : motion.speedOverGroundMps },
+        { path: 'navigation.courseOverGroundTrue', value: gpsUnavailable ? null : degToRad(motion.courseDeg) }
+      ])
+    )
+    if (own.headingEnabled !== false && (own.autopilotEnabled || ownMotionMode() === 'route')) {
+      updates.push(nmeaUpdate(4, 127237, [{
+        path: 'steering.autopilot.target.headingMagnetic',
+        value: degToRad(normalizeDeg((own.routeTargetDeg ?? own.headingDeg) - cfg.magneticVariationDeg))
+      }]))
+    }
+    if (includePosition) {
+      updates.push(nmeaUpdate(2, 129025, [{ path: 'navigation.position', value: ownGpsPosition() }]))
+    }
+    updates.push(
+      nmeaUpdate(2, 129029, [
+        { path: 'navigation.gnss.antennaAltitude', value: gpsUnavailable ? null : sats.antennaAltitude },
+        { path: 'navigation.gnss.satellites', value: gpsUnavailable ? 0 : sats.used },
+        { path: 'navigation.gnss.horizontalDilution', value: gpsUnavailable ? null : sats.hdop },
+        { path: 'navigation.gnss.positionDilution', value: gpsUnavailable ? null : sats.pdop },
+        { path: 'navigation.gnss.methodQuality', value: gpsUnavailable ? 'no GPS' : 'GNSS Fix' }
+      ]),
+      nmeaUpdate(2, 129540, [
+        {
+          path: 'navigation.gnss.satellitesInView',
+          value: gpsUnavailable ? { count: 0, satellites: [] } : sats.satellitesInView
+        }
+      ])
+    )
+    updates.push(...environmentUpdates({ includeCurrent: !gpsUnavailable }))
+    updates.push(...routeUpdates(motion))
+    updates.push(simulatorUpdate('motion', [
+      { path: 'navigation.rateOfTurn', value: rawDegToRad(own.rateOfTurnDegPerSecond || 0) },
+      { path: 'navigation.state', value: stationary || own.speedKn <= 0 ? 'stopped' : 'underWay' }
+    ]))
+    return updates
   }
 
   function ownValues({ includePosition = true } = {}) {
@@ -414,11 +498,58 @@ module.exports = function ajrmMarineSimulator(app) {
       { path: 'environment.current.drift', value: includeCurrent ? env.currentDriftKn * KNOTS_TO_MPS : null },
       { path: 'environment.tide.setTrue', value: includeCurrent ? degToRad(env.currentSetDeg) : null },
       { path: 'environment.tide.drift', value: includeCurrent ? env.currentDriftKn * KNOTS_TO_MPS : null },
+      { path: 'environment.water.temperature', value: env.waterTemperatureC + 273.15 },
       { path: 'environment.inside.engineRoom.temperature', value: env.engineRoomTemperatureC + 273.15 },
       { path: 'propulsion.main.temperature', value: env.exhaustWaterTemperatureC + 273.15 },
       { path: 'electrical.batteries.house.voltage', value: env.batteryVoltage },
       { path: 'electrical.batteries.house.current', value: env.batteryCurrent }
     ]
+  }
+
+  function environmentUpdates({ includeCurrent = true } = {}) {
+    const values = environmentValues({ includeCurrent })
+    const byPath = new Map(values.map((item) => [item.path, item]))
+    const take = (...paths) => paths.map((path) => byPath.get(path)).filter(Boolean)
+    return [
+      nmeaUpdate(35, 128267, take(
+        'environment.depth.belowTransducer',
+        'environment.depth.transducerToKeel',
+        'environment.depth.belowKeel'
+      )),
+      nmeaUpdate(35, 130306, take('environment.wind.speedApparent', 'environment.wind.angleApparent')),
+      nmeaUpdate(35, 130311, take('environment.water.temperature')),
+      nmeaUpdate(44, 130312, take('environment.inside.engineRoom.temperature')),
+      simulatorUpdate('derived', take(
+        'environment.wind.speedOverGround',
+        'environment.wind.speedTrue',
+        'environment.wind.directionTrue',
+        'environment.wind.angleTrueGround',
+        'environment.current.setTrue',
+        'environment.current.drift',
+        'environment.tide.setTrue',
+        'environment.tide.drift',
+        'propulsion.main.temperature',
+        'electrical.batteries.house.voltage',
+        'electrical.batteries.house.current'
+      ))
+    ]
+  }
+
+  function routeUpdates(motion) {
+    if (ownMotionMode() !== 'route' || !own.gpxRoute?.points?.length) return []
+    const point = own.gpxRoute.points[own.gpxRouteIndex]
+    if (!point) return []
+    const distance = distanceMeters(own.latitude, own.longitude, point.latitude, point.longitude)
+    const bearing = bearingDegrees(own.latitude, own.longitude, point.latitude, point.longitude)
+    const vmg = motion.speedOverGroundMps * Math.cos(degToRad(shortestAngleDelta(motion.courseDeg, bearing)))
+    return [nmeaUpdate(2, 129284, [
+      { path: 'navigation.courseGreatCircle.bearingTrackTrue', value: degToRad(bearing) },
+      { path: 'navigation.courseGreatCircle.nextPoint.distance', value: distance },
+      { path: 'navigation.courseGreatCircle.nextPoint.velocityMadeGood', value: vmg },
+      { path: 'navigation.courseGreatCircle.nextPoint.bearingTrue', value: degToRad(bearing) },
+      { path: 'navigation.courseGreatCircle.nextPoint.position', value: { latitude: point.latitude, longitude: point.longitude } },
+      { path: 'navigation.courseGreatCircle.nextPoint.timeToGo', value: vmg > 0 ? distance / vmg : null }
+    ])]
   }
 
   function environmentPaths() {
@@ -436,6 +567,7 @@ module.exports = function ajrmMarineSimulator(app) {
       'environment.current.drift',
       'environment.tide.setTrue',
       'environment.tide.drift',
+      'environment.water.temperature',
       'environment.inside.engineRoom.temperature',
       'propulsion.main.temperature',
       'electrical.batteries.house.voltage',
@@ -509,19 +641,100 @@ module.exports = function ajrmMarineSimulator(app) {
     return values
   }
 
+  function ownGpsState() {
+    const mode = GPS_FAULT_MODES.includes(own.gpsFaultMode) ? own.gpsFaultMode : 'normal'
+    const seconds = (Date.now() - startedAtMs) / 1000
+    return gnssSatelliteState(mode, seconds)
+  }
+
+  function ownGpsPosition() {
+    const mode = GPS_FAULT_MODES.includes(own.gpsFaultMode) ? own.gpsFaultMode : 'normal'
+    if (ownGpsUnavailable()) return null
+    let position = { latitude: own.latitude, longitude: own.longitude }
+    if (mode === 'jump') {
+      position = offsetMeters(position.latitude, position.longitude, 500, 500)
+    } else if (mode === 'spoof') {
+      own.gpsSpoofOffsetM += cfg.outputPeriod * 1.5
+      position = offsetMeters(position.latitude, position.longitude, own.gpsSpoofOffsetM, own.gpsSpoofOffsetM)
+    }
+    return position
+  }
+
   function publishTarget(target, includeStatic = false) {
     if (!cfg?.outputEnabled || !target.enabled) return false
     if (includeStatic) {
-      app.handleMessage(plugin.id, {
-        context: contextForTarget(target),
-        updates: [{ $source: cfg.sourceName, values: targetStaticValues(target) }]
-      })
+      const staticUpdates = targetStaticUpdates(target)
+      if (staticUpdates.length > 0) {
+        app.handleMessage(plugin.id, {
+          context: contextForTarget(target),
+          updates: staticUpdates
+        })
+      }
     }
     app.handleMessage(plugin.id, {
       context: contextForTarget(target),
-      updates: [{ $source: cfg.sourceName, values: targetDynamicValues(target) }]
+      updates: [targetDynamicUpdate(target)]
     })
     return true
+  }
+
+  function aisUpdate(pgn, values) {
+    return nmeaUpdate(43, pgn, values)
+  }
+
+  function targetStaticUpdates(target) {
+    if (target.isFixedStation) return []
+    const mmsi = transmittedMmsi(target)
+    if (target.aisClass === 'A') {
+      const values = [
+        { path: 'sensors.ais.class', value: 'A' },
+        { path: '', value: { name: transmittedName(target) } }
+      ]
+      if (target.destination) values.push({ path: 'navigation.destination.commonName', value: target.destination })
+      values.push(
+        { path: 'design.draft', value: { maximum: target.draft } },
+        { path: 'design.length', value: { overall: target.length } },
+        { path: 'design.aisShipType', value: { id: target.aisShipType, name: AIS_TYPES[target.aisShipType] || 'Unknown' } }
+      )
+      if (target.callsign) values.push({ path: '', value: { communication: { callsignVhf: target.callsign } } })
+      values.push(
+        { path: 'design.beam', value: target.width },
+        { path: 'sensors.ais.fromBow', value: target.aisFromBow },
+        { path: 'sensors.ais.fromCenter', value: target.aisFromCenter },
+        { path: '', value: { mmsi } }
+      )
+      const imo = canonicalImo(target.imo)
+      if (imo) values.push({ path: '', value: { registrations: { imo } } })
+      return [aisUpdate(129794, values)]
+    }
+    const nameValues = [
+      { path: 'sensors.ais.class', value: 'B' },
+      { path: '', value: { name: transmittedName(target) } },
+      { path: '', value: { mmsi } }
+    ]
+    const dimensions = [
+      { path: 'design.length', value: { overall: target.length } },
+      { path: 'design.aisShipType', value: { id: target.aisShipType, name: AIS_TYPES[target.aisShipType] || 'Unknown' } },
+      { path: 'design.beam', value: target.width }
+    ]
+    if (target.callsign) dimensions.push({ path: '', value: { communication: { callsignVhf: target.callsign } } })
+    dimensions.push(
+      { path: 'sensors.ais.fromBow', value: target.aisFromBow },
+      { path: 'sensors.ais.fromCenter', value: target.aisFromCenter },
+      { path: '', value: { mmsi } }
+    )
+    return [aisUpdate(129809, nameValues), aisUpdate(129810, dimensions)]
+  }
+
+  function targetDynamicUpdate(target) {
+    if (target.isFixedStation) {
+      return aisUpdate(129793, [
+        { path: 'navigation.position', value: { latitude: target.latitude, longitude: target.longitude } },
+        { path: '', value: { mmsi: transmittedMmsi(target) } },
+        { path: 'sensors.ais.class', value: 'BASE' }
+      ])
+    }
+    return aisUpdate(target.aisClass === 'A' ? 129038 : 129039, targetDynamicValues(target))
   }
 
   function publishQuietTarget(target) {
@@ -570,11 +783,7 @@ module.exports = function ajrmMarineSimulator(app) {
     const values = [
       { path: 'navigation.courseOverGroundTrue', value: degToRad(target.courseDeg) },
       { path: 'navigation.speedOverGround', value: target.speedKn * KNOTS_TO_MPS },
-      { path: 'navigation.headingTrue', value: degToRad(target.courseDeg) },
-      { path: 'navigation.rateOfTurn', value: rawDegToRad(target.rateOfTurnDegPerSecond || 0) },
-      { path: 'steering.rudderAngle', value: rawDegToRad(target.rudderAngleDeg || 0) },
-      { path: 'navigation.state', value: navigationState(target) },
-      { path: 'sensors.ais.class', value: target.aisClass }
+      { path: 'navigation.headingTrue', value: degToRad(target.courseDeg) }
     ]
     if (mode === 'lost') {
       values.push({ path: 'navigation.position', value: null })
@@ -587,6 +796,17 @@ module.exports = function ajrmMarineSimulator(app) {
       }
       values.push({ path: 'navigation.position', value: position })
     }
+    if (target.aisClass === 'A') {
+      values.push(
+        { path: 'navigation.rateOfTurn', value: rawDegToRad(target.rateOfTurnDegPerSecond || 0) },
+        { path: 'navigation.state', value: navigationState(target) },
+        { path: 'navigation.specialManeuver', value: 'not available' }
+      )
+    }
+    values.push(
+      { path: '', value: { mmsi: transmittedMmsi(target) } },
+      { path: 'sensors.ais.class', value: target.aisClass }
+    )
     if (isEmergencyActive(target)) values.push({ path: '', value: { name: transmittedName(target) } })
     return values
   }
@@ -787,6 +1007,7 @@ module.exports = function ajrmMarineSimulator(app) {
       apparentWindAngleDeg: [-180, 180],
       currentDriftKn: [0, 8],
       currentSetDeg: [0, 360],
+      waterTemperatureC: [-2, 40],
       engineRoomTemperatureC: [-10, 120],
       exhaustWaterTemperatureC: [-10, 120]
     }
@@ -879,6 +1100,7 @@ module.exports = function ajrmMarineSimulator(app) {
         apparentWindAngleDeg: round(env.apparentWindAngleDeg, 0),
         currentDriftKn: round(env.currentDriftKn, 1),
         currentSetDeg: round(env.currentSetDeg, 0),
+        waterTemperatureC: round(env.waterTemperatureC, 1),
         engineRoomTemperatureC: round(env.engineRoomTemperatureC, 1),
         exhaustWaterTemperatureC: round(env.exhaustWaterTemperatureC, 1),
         batteryVoltage: round(env.batteryVoltage, 1),
@@ -931,6 +1153,7 @@ module.exports = function ajrmMarineSimulator(app) {
   function normalizeConfig(props = {}) {
     return {
       sourceName: String(props.sourceName || 'ajrm-marine-simulator'),
+      magneticVariationDeg: clamp(props.magneticVariationDeg, -180, 180, DEFAULT_MAGNETIC_VARIATION_DEG),
       outputEnabled: false,
       targetAutopilotEnabled: props.targetAutopilotEnabled !== false,
       outputPeriod: clamp(props.outputPeriod, 0.2, 10, DEFAULT_PERIOD_SECONDS),
@@ -1052,6 +1275,7 @@ module.exports = function ajrmMarineSimulator(app) {
         apparentWindAngleDeg: round(env.apparentWindAngleDeg, 0),
         currentDriftKn: round(env.currentDriftKn, 1),
         currentSetDeg: round(env.currentSetDeg, 0),
+        waterTemperatureC: round(env.waterTemperatureC, 1),
         engineRoomTemperatureC: round(env.engineRoomTemperatureC, 1),
         exhaustWaterTemperatureC: round(env.exhaustWaterTemperatureC, 1),
         depthVarying: env.depthVarying,
@@ -1164,6 +1388,7 @@ module.exports = function ajrmMarineSimulator(app) {
       apparentWindAngleDeg: clamp(input.apparentWindAngleDeg, -180, 180, -90),
       currentDriftKn: clamp(input.currentDriftKn, 0, 8, 1.2),
       currentSetDeg: normalizeDeg(input.currentSetDeg ?? 270),
+      waterTemperatureC: clamp(input.waterTemperatureC, -2, 40, 15.6),
       engineRoomTemperatureC: clamp(input.engineRoomTemperatureC, -10, 120, 24),
       exhaustWaterTemperatureC: clamp(input.exhaustWaterTemperatureC, -10, 120, 32),
       batteryVoltage: clamp(input.batteryVoltage, 9, 16, 12.7),
@@ -1386,6 +1611,7 @@ module.exports = function ajrmMarineSimulator(app) {
           default: false
         },
         sourceName: { type: 'string', title: 'Signal K source name', default: 'ajrm-marine-simulator' },
+        magneticVariationDeg: { type: 'number', title: 'Magnetic variation degrees', default: DEFAULT_MAGNETIC_VARIATION_DEG },
         outputPeriod: { type: 'number', title: 'Simulation tick period (seconds)', default: DEFAULT_PERIOD_SECONDS },
         targetAutopilotEnabled: { type: 'boolean', title: 'Master AIS target auto-reverse routes', default: true },
         routeTurnRudderAngleDeg: { type: 'number', title: 'Route turn rudder angle', default: DEFAULT_ROUTE_RUDDER_DEG },
@@ -1420,6 +1646,7 @@ module.exports = function ajrmMarineSimulator(app) {
             apparentWindAngleDeg: { type: 'number', title: 'Apparent wind angle', default: -90 },
             currentDriftKn: { type: 'number', title: 'Current/tide drift', default: 1.2 },
             currentSetDeg: { type: 'number', title: 'Current/tide set true', default: 270 },
+            waterTemperatureC: { type: 'number', title: 'Water temperature C', default: 15.6 },
             depthVarying: { type: 'boolean', title: 'Vary depth over time', default: true },
             windVarying: { type: 'boolean', title: 'Vary wind over time', default: true },
             currentVarying: { type: 'boolean', title: 'Vary current/tide over time', default: true }
@@ -1449,14 +1676,22 @@ module.exports = function ajrmMarineSimulator(app) {
 function gnssSatelliteState(mode, seconds) {
   const degraded = mode === 'degraded'
   const signal = degraded ? 0.42 + Math.sin(seconds / 9) * 0.08 : 0.86 + Math.sin(seconds / 14) * 0.05
-  const used = degraded ? 4 : 13 + Math.round(Math.sin(seconds / 12) * 2)
-  const inView = degraded ? 7 : 22 + Math.round(Math.sin(seconds / 18) * 3)
+  const used = degraded ? 4 : 19 + Math.round(Math.sin(seconds / 12) * 2)
+  const inView = degraded ? 7 : 16 + Math.round(Math.sin(seconds / 18) * 2)
+  const satellites = Array.from({ length: inView }, (_, index) => ({
+    id: index < 8 ? index + 1 : index + 57,
+    elevation: round(0.05 + ((index * 0.173 + seconds / 900) % 1.25), 4),
+    azimuth: round((index * 0.67 + seconds / 120) % (Math.PI * 2), 4),
+    SNR: Math.round((degraded ? 14 : 22) + ((index * 7) % 14))
+  }))
   return {
-    hdop: degraded ? 5.5 + Math.abs(Math.sin(seconds / 8)) * 2 : 0.8 + Math.abs(Math.sin(seconds / 15)) * 0.4,
+    antennaAltitude: degraded ? 56 + Math.sin(seconds / 7) * 8 : 56 + Math.sin(seconds / 45) * 4,
+    hdop: degraded ? 5.5 + Math.abs(Math.sin(seconds / 8)) * 2 : 0.58 + Math.sin(seconds / 30) * 0.06,
     vdop: degraded ? 8 : 1.3,
-    pdop: degraded ? 9 : 1.7,
+    pdop: degraded ? 9 : 1 + Math.sin(seconds / 36) * 0.15,
     used,
     inView,
+    satellitesInView: { count: inView, satellites },
     signalStrength: round(Math.max(0, Math.min(1, signal)), 2),
     constellations: CONSTELLATIONS.map((id, index) => ({
       id,
@@ -1547,6 +1782,7 @@ function canonicalImo(value) {
 }
 
 function contextForTarget(target) {
+  if (target.isFixedStation) return `shore.basestations.urn:mrn:imo:mmsi:${transmittedMmsi(target)}`
   return `vessels.urn:mrn:imo:mmsi:${transmittedMmsi(target)}`
 }
 
@@ -1577,7 +1813,7 @@ function navigationState(target) {
   const definition = emergencyDefinition(target)
   if (definition.stateName) return { id: AIS_NAV_STATUS_ACTIVE_SART, name: definition.stateName }
   if (target.isFixedStation) return 'baseStation'
-  return 'underWay'
+  return 'motoring'
 }
 
 function shortestAngleDelta(fromDeg, toDeg) {

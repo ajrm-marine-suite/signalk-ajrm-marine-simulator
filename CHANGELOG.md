@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.0
+
+- Model the recurring raw YDEN capture shapes with separate NMEA 2000 source
+  metadata and PGN-grouped updates for heading, rudder, STW, position,
+  COG/SOG, GNSS quality, depth, wind, water temperature, engine-room
+  temperature, autopilot state, and active-route projection.
+- Publish structured `navigation.gnss.satellitesInView` data with satellite
+  IDs, elevation, azimuth, and SNR, matching the captured PGN 129540 shape.
+- Model AIS Class A, Class B, and base-station traffic using their distinct
+  dynamic and static PGNs, including root MMSI fragments, Class A navigation
+  state/special-manoeuvre fields, and `shore.basestations` contexts.
+- Keep the one-second simulation loop instead of reproducing YDEN's frequent
+  metadata-only empty updates, which carry no changed Signal K values.
+- Publish GPX next-leg navigation using the captured PGN 129284 course
+  projection paths.
+
 ## 0.6.1
 
 - Publish simulated IMO registration numbers as canonical Signal K static

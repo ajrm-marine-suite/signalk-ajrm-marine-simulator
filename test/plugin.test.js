@@ -253,6 +253,7 @@ test('configured AIS target fleet is used at startup', () => {
     assert.deepEqual(targetValues[''], {
       name: 'CUSTOM TRADER',
       communication: { callsignVhf: 'CUS123' },
+      mmsi: '235901234',
       registrations: { imo: 'IMO 9482902' }
     })
     assert.equal(targetValues['registrations.imo'], undefined)
@@ -262,9 +263,95 @@ test('configured AIS target fleet is used at startup', () => {
     assert.equal(targetValues['sensors.ais.fromCenter'], -1)
 
     const stationValues = allValuesByPath(messages, '002351234')
-    assert.deepEqual(stationValues[''], { name: 'CUSTOM BASE' })
+    assert.deepEqual(stationValues[''], { mmsi: '002351234' })
     assert.deepEqual(stationValues['navigation.position'], { latitude: 56.3, longitude: -5.7 })
-    assert.equal(stationValues['navigation.state'], 'baseStation')
+    assert.equal(stationValues['sensors.ais.class'], 'BASE')
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('output follows representative live YDEN NMEA 2000 update shapes', () => {
+  const messages = []
+  const routes = new Map()
+  const app = {
+    setPluginStatus() {},
+    handleMessage(id, delta) { messages.push({ id, delta }) }
+  }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({
+      own: { initialHeadingDeg: 90, initialSpeedKn: 5 },
+      targets: [
+        { id: 'a', mmsi: '235900101', name: 'CLASS A', aisClass: 'A', startPosition: DEFAULT_BASE, speedKn: 8 },
+        { id: 'b', mmsi: '235900102', name: 'CLASS B', aisClass: 'B', startPosition: DEFAULT_BASE, speedKn: 3 }
+      ],
+      fixedStations: [{ id: 'base', mmsi: '002320768', name: 'BASE', startPosition: DEFAULT_BASE }]
+    })
+    invoke(routes, 'POST', '/output', { enabled: true })
+
+    const ownDelta = messages.find((message) => message.delta.context === 'vessels.self').delta
+    const byPgn = new Map(ownDelta.updates.map((update) => [update.source?.pgn, update]))
+    assert.deepEqual(byPgn.get(128259).values.map((item) => item.path), [
+      'navigation.speedThroughWater',
+      'navigation.speedThroughWaterReferenceType'
+    ])
+    assert.deepEqual(byPgn.get(128267).values.map((item) => item.path), [
+      'environment.depth.belowTransducer',
+      'environment.depth.transducerToKeel',
+      'environment.depth.belowKeel'
+    ])
+    assert.equal(byPgn.get(127250).source.src, '4')
+    assert.equal(byPgn.get(127250).values[0].path, 'navigation.headingMagnetic')
+    assert.equal(byPgn.get(129025).source.src, '2')
+    const satellites = byPgn.get(129540).values[0].value
+    assert.equal(satellites.count, satellites.satellites.length)
+    assert.equal(typeof satellites.satellites[0].SNR, 'number')
+
+    const classA = messages.find((message) => message.delta.context.includes('235900101') &&
+      message.delta.updates.some((update) => update.source?.pgn === 129038))
+    const classB = messages.find((message) => message.delta.context.includes('235900102') &&
+      message.delta.updates.some((update) => update.source?.pgn === 129039))
+    const base = messages.find((message) => message.delta.context.includes('002320768'))
+    assert.ok(classA)
+    assert.ok(classB)
+    assert.equal(base.delta.context, 'shore.basestations.urn:mrn:imo:mmsi:002320768')
+    assert.equal(base.delta.updates[0].source.pgn, 129793)
+    assert.equal(valuesByPath(classA.delta)['navigation.specialManeuver'], 'not available')
+    assert.equal(Object.prototype.hasOwnProperty.call(valuesByPath(classB.delta), 'navigation.specialManeuver'), false)
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('GPX route mode publishes the live course projection PGN shape', () => {
+  const messages = []
+  const routes = new Map()
+  const plugin = createPlugin({
+    setPluginStatus() {},
+    handleMessage(id, delta) { messages.push({ id, delta }) }
+  })
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({ outputEnabled: false })
+    invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Captured-shape route',
+      points: [DEFAULT_BASE, { latitude: DEFAULT_BASE.latitude + 0.01, longitude: DEFAULT_BASE.longitude }]
+    })
+    invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
+    invoke(routes, 'POST', '/output', { enabled: true })
+    const ownDelta = messages.filter((message) => message.delta.context === 'vessels.self').at(-1).delta
+    const route = ownDelta.updates.find((update) => update.source?.pgn === 129284)
+    assert.ok(route)
+    assert.deepEqual(route.values.map((item) => item.path), [
+      'navigation.courseGreatCircle.bearingTrackTrue',
+      'navigation.courseGreatCircle.nextPoint.distance',
+      'navigation.courseGreatCircle.nextPoint.velocityMadeGood',
+      'navigation.courseGreatCircle.nextPoint.bearingTrue',
+      'navigation.courseGreatCircle.nextPoint.position',
+      'navigation.courseGreatCircle.nextPoint.timeToGo'
+    ])
   } finally {
     plugin.stop()
   }
@@ -859,7 +946,7 @@ test('own GPS lost publishes null GPS-derived navigation and current values', ()
   invoke(routes, 'POST', '/output', { enabled: true })
   invoke(routes, 'POST', '/own/controls', { gpsFaultMode: 'lost' })
   const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
-  const byPath = Object.fromEntries(self.delta.updates[0].values.map((item) => [item.path, item.value]))
+  const byPath = valuesByPath(self.delta)
   assert.equal(byPath['navigation.position'], null)
   assert.equal(byPath['navigation.speedOverGround'], null)
   assert.equal(byPath['navigation.courseOverGroundTrue'], null)
@@ -890,7 +977,7 @@ test('rapid own controls do not publish extra position samples', () => {
 
     invoke(routes, 'POST', '/own/speed', { direction: 'up' })
     const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
-    const byPath = Object.fromEntries(self.delta.updates[0].values.map((item) => [item.path, item.value]))
+    const byPath = valuesByPath(self.delta)
     assert.ok(byPath['navigation.speedThroughWater'] > 0)
     assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.position'), false)
   } finally {
@@ -916,8 +1003,8 @@ test('own output publishes crabbing heading separately from COG', () => {
     })
     invoke(routes, 'POST', '/output', { enabled: true })
     const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
-    const byPath = Object.fromEntries(self.delta.updates[0].values.map((item) => [item.path, item.value]))
-    assert.equal(byPath['navigation.headingTrue'], 0)
+    const byPath = valuesByPath(self.delta)
+    assert.ok(byPath['navigation.headingMagnetic'] > 0)
     assert.ok(byPath['navigation.courseOverGroundTrue'] > 0.19)
     assert.ok(byPath['navigation.courseOverGroundTrue'] < 0.21)
     assert.ok(byPath['navigation.speedOverGround'] > byPath['navigation.speedThroughWater'])
@@ -945,11 +1032,11 @@ test('disabled environment clears simulated environment values and removes curre
     invoke(routes, 'POST', '/environment', { enabled: false })
     invoke(routes, 'POST', '/output', { enabled: true })
     const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
-    const byPath = Object.fromEntries(self.delta.updates[0].values.map((item) => [item.path, item.value]))
+    const byPath = valuesByPath(self.delta)
     assert.equal(byPath['environment.depth.belowTransducer'], null)
     assert.equal(byPath['environment.wind.speedApparent'], null)
     assert.equal(byPath['environment.current.drift'], null)
-    assert.equal(byPath['navigation.headingTrue'], 0)
+    assert.ok(byPath['navigation.headingMagnetic'] > 0)
     assert.equal(byPath['navigation.courseOverGroundTrue'], 0)
     assert.equal(byPath['navigation.speedOverGround'], byPath['navigation.speedThroughWater'])
     assert.equal(invoke(routes, 'GET', '/state').environment.enabled, false)
@@ -983,7 +1070,7 @@ test('manual depth edit remains stable while depth variation is enabled', async 
     const ownMessages = messages.filter((message) => message.delta.context === 'vessels.self')
     const depthValues = ownMessages
       .map((message) => Object.fromEntries(
-        message.delta.updates[0].values.map((item) => [item.path, item.value])
+        Object.entries(valuesByPath(message.delta))
       )['environment.depth.belowTransducer'])
       .filter((value) => Number.isFinite(value))
 
@@ -1014,8 +1101,8 @@ test('own heading output can be disabled while COG remains available', () => {
     invoke(routes, 'POST', '/output', { enabled: true })
     invoke(routes, 'POST', '/own/controls', { headingEnabled: false })
     const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
-    const byPath = Object.fromEntries(self.delta.updates[0].values.map((item) => [item.path, item.value]))
-    assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.headingTrue'), false)
+    const byPath = valuesByPath(self.delta)
+    assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.headingMagnetic'), false)
     assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.courseOverGroundTrue'), true)
     assert.equal(invoke(routes, 'GET', '/state').own.headingEnabled, false)
   } finally {
@@ -1023,7 +1110,7 @@ test('own heading output can be disabled while COG remains available', () => {
   }
 })
 
-test('signed target rudder angles are published without compass wrapping', () => {
+test('AIS target output omits non-AIS rudder data', () => {
   const messages = []
   const routes = new Map()
   const app = {
@@ -1038,8 +1125,8 @@ test('signed target rudder angles are published without compass wrapping', () =>
   invoke(routes, 'POST', '/output', { enabled: true })
   invoke(routes, 'POST', '/targets/:id/control', { rudderDirection: 'left' }, { id: 'sim-9' })
   const byPath = latestValuesByPath(messages, '235900009')
-  assert.ok(byPath['steering.rudderAngle'] < 0)
-  assert.ok(byPath['steering.rudderAngle'] > -Math.PI)
+  assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'steering.rudderAngle'), false)
+  assert.equal(byPath['sensors.ais.class'], 'B')
   plugin.stop()
 })
 
@@ -1067,7 +1154,19 @@ test('automatic left turns publish negative rate of turn', () => {
   try {
     plugin = createPlugin(app)
     plugin.registerWithRouter(routerMap(routes))
-    plugin.start()
+    plugin.start({
+      targets: [{
+        id: 'class-a-turn',
+        mmsi: '235900009',
+        name: 'CLASS A TURN',
+        aisClass: 'A',
+        startPosition: { latitude: 56.2, longitude: -5.6 },
+        initialCourseDeg: 310,
+        speedKn: 4.5,
+        legDuration: 120
+      }],
+      fixedStations: []
+    })
     invoke(routes, 'POST', '/output', { enabled: true })
     now += 121000
     tick()
@@ -1180,13 +1279,37 @@ function latestValuesByPath(messages, mmsi) {
     .filter((entry) => String(entry.delta.context).includes(mmsi))
     .at(-1)
   assert.ok(message, `expected message for ${mmsi}`)
-  return Object.fromEntries(message.delta.updates[0].values.map((item) => [item.path, item.value]))
+  return valuesByPath(message.delta)
 }
 
 function allValuesByPath(messages, mmsi) {
   const matching = messages.filter((entry) => String(entry.delta.context).includes(mmsi))
   assert.ok(matching.length > 0, `expected message for ${mmsi}`)
+  const result = {}
+  for (const message of matching) {
+    for (const update of message.delta.updates) {
+      for (const item of update.values) {
+        result[item.path] = item.path === ''
+          ? mergeObjects(result[item.path], item.value)
+          : item.value
+      }
+    }
+  }
+  return result
+}
+
+function valuesByPath(delta) {
   return Object.fromEntries(
-    matching.flatMap((message) => message.delta.updates[0].values.map((item) => [item.path, item.value]))
+    delta.updates.flatMap((update) => update.values.map((item) => [item.path, item.value]))
   )
+}
+
+function mergeObjects(left, right) {
+  if (!left || typeof left !== 'object' || Array.isArray(left)) return right
+  if (!right || typeof right !== 'object' || Array.isArray(right)) return right
+  const merged = { ...left }
+  for (const [key, value] of Object.entries(right)) {
+    merged[key] = mergeObjects(merged[key], value)
+  }
+  return merged
 }
