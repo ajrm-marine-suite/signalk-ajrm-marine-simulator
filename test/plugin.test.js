@@ -305,6 +305,7 @@ test('output follows representative live YDEN NMEA 2000 update shapes', () => {
     ])
     assert.equal(byPgn.get(127250).source.src, '4')
     assert.equal(byPgn.get(127250).source.label, 'YDEN')
+    assert.equal(byPgn.get(127250).$source, 'YDEN.4')
     assert.equal(byPgn.get(127250).values[0].path, 'navigation.headingMagnetic')
     assert.equal(byPgn.get(129025).source.src, '2')
     const satellites = byPgn.get(129540).values[0].value

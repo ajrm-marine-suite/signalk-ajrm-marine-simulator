@@ -369,7 +369,7 @@ module.exports = function ajrmMarineSimulator(app) {
       },
       timestamp: new Date().toISOString(),
       values,
-      $source: `${cfg.sourceName}.${src}`
+      $source: `${NMEA_GATEWAY_SOURCE}.${src}`
     }
   }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2
+
+- Correct the explicit subscriber-facing `$source` on simulated NMEA 2000
+  updates as well as their gateway label, allowing Navigation Reference to
+  recognise the configured `YDEN.4` compass source.
+
 ## 0.7.1
 
 - Publish simulated NMEA 2000 updates under the captured `YDEN` gateway
