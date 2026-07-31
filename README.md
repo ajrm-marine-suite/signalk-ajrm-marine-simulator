@@ -6,9 +6,13 @@
 Unified Signal K simulator for AJRM Marine Suite testing.
 
 This plugin combines own-vessel, environment, GNSS, fixed-station, and moving
-AIS target simulation under one `ajrm-marine-simulator` source namespace. It
-uses separate simulated NMEA 2000 devices and PGN-shaped updates so recorded
-output resembles the real YDEN data while remaining isolated from live inputs.
+AIS target simulation in one coordinated model. Simulator-only calculated
+values use the `ajrm-marine-simulator` namespace. Separate simulated NMEA 2000
+devices and PGN-shaped updates resemble the real YDEN data and intentionally use the
+captured `YDEN` gateway identity (for example compass source `YDEN.4`) so the
+suite's explicitly configured Navigation Reference sources behave as they do
+on the boat. Run the simulator only in the isolated home-test environment, not
+while the real YDEN gateway is connected.
 
 ## Safety Switch
 
@@ -99,7 +103,7 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.7.0 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.7.1 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

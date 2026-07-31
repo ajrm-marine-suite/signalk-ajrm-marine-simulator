@@ -23,6 +23,7 @@ const MAX_OWN_SPEED_KN = 999
 const DEFAULT_ROUTE_RUDDER_DEG = 30
 const DEFAULT_GPX_ARRIVAL_RADIUS_M = 25
 const DEFAULT_MAGNETIC_VARIATION_DEG = -2.72
+const NMEA_GATEWAY_SOURCE = 'YDEN'
 const MAX_GPX_ROUTE_POINTS = 2000
 const MAX_GPX_SUBSTEPS = 500
 const RUNTIME_SETTINGS_VERSION = 1
@@ -336,7 +337,7 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function publishQuietSnapshot() {
     if (!cfg?.outputEnabled || !own) return false
-    app.handleMessage(plugin.id, {
+    app.handleMessage(NMEA_GATEWAY_SOURCE, {
       context: 'vessels.self',
       updates: [
         {
@@ -351,7 +352,7 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function publishOwn({ includePosition = true } = {}) {
     if (!cfg?.outputEnabled || !own) return false
-    app.handleMessage(plugin.id, {
+    app.handleMessage(NMEA_GATEWAY_SOURCE, {
       context: 'vessels.self',
       updates: ownUpdates({ includePosition })
     })
@@ -361,7 +362,7 @@ module.exports = function ajrmMarineSimulator(app) {
   function nmeaUpdate(src, pgn, values) {
     return {
       source: {
-        label: 'AJRM Simulator',
+        label: NMEA_GATEWAY_SOURCE,
         type: 'NMEA2000',
         pgn,
         src: String(src)
@@ -665,13 +666,13 @@ module.exports = function ajrmMarineSimulator(app) {
     if (includeStatic) {
       const staticUpdates = targetStaticUpdates(target)
       if (staticUpdates.length > 0) {
-        app.handleMessage(plugin.id, {
+        app.handleMessage(NMEA_GATEWAY_SOURCE, {
           context: contextForTarget(target),
           updates: staticUpdates
         })
       }
     }
-    app.handleMessage(plugin.id, {
+    app.handleMessage(NMEA_GATEWAY_SOURCE, {
       context: contextForTarget(target),
       updates: [targetDynamicUpdate(target)]
     })
@@ -739,7 +740,7 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function publishQuietTarget(target) {
     if (!target.enabled) return false
-    app.handleMessage(plugin.id, {
+    app.handleMessage(NMEA_GATEWAY_SOURCE, {
       context: contextForTarget(target),
       updates: [
         {

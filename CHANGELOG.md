@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.1
+
+- Publish simulated NMEA 2000 updates under the captured `YDEN` gateway
+  identity, including compass source `YDEN.4`, so Navigation Reference can use
+  its explicitly configured physical-heading source during isolated home tests.
+- Keep Simulator-only calculated values in the separate configured simulator
+  namespace.
+
 ## 0.7.0
 
 - Model the recurring raw YDEN capture shapes with separate NMEA 2000 source
