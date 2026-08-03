@@ -196,10 +196,62 @@ test('plugin schema exposes editable AIS target and fixed station fleets', () =>
 
   assert.equal(plugin.schema.properties.targets.type, 'array')
   assert.equal(plugin.schema.properties.targets.items.properties.mmsi.title, 'MMSI')
-  assert.equal(targetDefaults[0].name, 'NORTH CHANNEL')
+  assert.equal(targetDefaults[0].name, 'SIM NORTH CHANNEL')
   assert.equal(targetDefaults[0].startPosition.latitude, 56.1625)
+  assert.equal(targetDefaults.find((target) => target.id === 'sim-sar-aircraft')?.mmsi, '111000599')
+  assert.equal(targetDefaults.find((target) => target.id === 'sim-sar-aircraft')?.targetKind, 'sar-aircraft')
+  assert.equal(plugin.schema.properties.targets.items.properties.targetKind.title, 'Target category')
   assert.equal(plugin.schema.properties.fixedStations.type, 'array')
   assert.equal(stationDefaults[0].name, 'Craobh AIS Base')
+})
+
+test('default fleet publishes a synthetic SAR aircraft using the AIS SAR aircraft PGN', () => {
+  const messages = []
+  const routes = new Map()
+  const plugin = createPlugin({
+    setPluginStatus() {},
+    handleMessage(id, delta) { messages.push({ id, delta }) }
+  })
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({})
+    invoke(routes, 'POST', '/output', { enabled: true })
+
+    const sarMessages = messages.filter((message) => message.delta.context.includes('111000599'))
+    assert.ok(sarMessages.length > 0)
+    assert.ok(sarMessages.every((message) => message.id === 'YDEN'))
+    const sarUpdate = sarMessages.flatMap((message) => message.delta.updates)
+      .find((update) => update.source?.pgn === 129798)
+    assert.ok(sarUpdate)
+    const values = valuesByPath({ updates: [sarUpdate] })
+    assert.equal(values[''].mmsi, '111000599')
+    assert.equal(values['navigation.speedOverGround'], 120 * KNOTS_TO_MPS)
+    assert.equal(values['sensors.ais.class'], undefined)
+    assert.equal(values['design.aisShipType'], undefined)
+
+    const sarTarget = invoke(routes, 'GET', '/state').targets
+      .find((target) => target.mmsi === '111000599')
+    assert.equal(sarTarget.targetKind, 'sar-aircraft')
+    assert.equal(sarTarget.aisClass, 'SAR')
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('existing default-style fleets gain the synthetic SAR aircraft once', () => {
+  const routes = new Map()
+  const plugin = createPlugin({ setPluginStatus() {}, handleMessage() {} })
+  plugin.registerWithRouter(routerMap(routes))
+  const oldDefaults = plugin.schema.properties.targets.default
+    .filter((target) => target.id !== 'sim-sar-aircraft')
+  try {
+    plugin.start({ targets: oldDefaults })
+    const sarTargets = invoke(routes, 'GET', '/state').targets
+      .filter((target) => target.mmsi === '111000599')
+    assert.equal(sarTargets.length, 1)
+  } finally {
+    plugin.stop()
+  }
 })
 
 test('configured AIS target fleet is used at startup', () => {

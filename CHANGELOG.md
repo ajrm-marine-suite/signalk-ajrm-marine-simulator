@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.3
+
+- Add an explicitly typed synthetic SAR helicopter using reserved test MMSI
+  `111000599` and publish it with AIS SAR aircraft report PGN 129798.
+- Prefix named default simulated vessels with `SIM` while retaining the
+  deliberately unnamed target used to test missing static AIS data.
+- Preserve the aircraft category through runtime state, allow realistic SAR
+  speeds, and avoid publishing vessel-only static details or AIS A/B class.
+
 ## 0.7.2
 
 - Correct the explicit subscriber-facing `$source` on simulated NMEA 2000

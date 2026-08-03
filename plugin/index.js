@@ -20,6 +20,9 @@ const DEFAULT_PERIOD_SECONDS = 1
 const DEFAULT_LEG_SECONDS = 300
 const MAX_RUDDER_DEG = 35
 const MAX_OWN_SPEED_KN = 999
+const MAX_TARGET_SPEED_KN = 40
+const MAX_SAR_AIRCRAFT_SPEED_KN = 300
+const SYNTHETIC_SAR_AIRCRAFT_MMSI = '111000599'
 const DEFAULT_ROUTE_RUDDER_DEG = 30
 const DEFAULT_GPX_ARRIVAL_RADIUS_M = 25
 const DEFAULT_MAGNETIC_VARIATION_DEG = -2.72
@@ -48,16 +51,16 @@ const EMERGENCY_MODES = {
 }
 
 const DEFAULT_TARGETS = [
-  ['sim-1', 'NORTH CHANNEL', '235900001', 'VSA001', 35000, 70, 340, 56, 56.1625, -5.69, 345, 5.4, 360, 300, -8],
-  ['sim-2', 'IRISH SEA TRADER', '235900002', 'VSA002', 12000, 70, 180, 28, 56.255, -5.6665, 165, 4.8, 420, 158, 5],
-  ['sim-3', 'FAST FERRY ONE', '235900003', 'VSA003', 6500, 60, 96, 27, 56.22, -5.625, 30, 7, 240, 24, -6],
-  ['sim-4', 'COASTAL SUPPLY', '235900004', 'VSA004', 900, 70, 54, 11, 56.239, -5.59, 50, 3.8, 300, 44, 2],
-  ['sim-5', 'HARBOUR TUG', '235900005', 'VSA005', 420, 52, 28, 9, 56.213, -5.565, 95, 2.2, 180, 17, -2],
-  ['sim-6', 'SEA OTTER', '235900006', 'VSB006', 18, 36, 13, 4, 56.232, -5.565, 20, 2.8, 360, 10.4, 0.3],
+  ['sim-1', 'SIM NORTH CHANNEL', '235900001', 'VSA001', 35000, 70, 340, 56, 56.1625, -5.69, 345, 5.4, 360, 300, -8],
+  ['sim-2', 'SIM IRISH SEA TRADER', '235900002', 'VSA002', 12000, 70, 180, 28, 56.255, -5.6665, 165, 4.8, 420, 158, 5],
+  ['sim-3', 'SIM FAST FERRY ONE', '235900003', 'VSA003', 6500, 60, 96, 27, 56.22, -5.625, 30, 7, 240, 24, -6],
+  ['sim-4', 'SIM COASTAL SUPPLY', '235900004', 'VSA004', 900, 70, 54, 11, 56.239, -5.59, 50, 3.8, 300, 44, 2],
+  ['sim-5', 'SIM HARBOUR TUG', '235900005', 'VSA005', 420, 52, 28, 9, 56.213, -5.565, 95, 2.2, 180, 17, -2],
+  ['sim-6', 'SIM SEA OTTER', '235900006', 'VSB006', 18, 36, 13, 4, 56.232, -5.565, 20, 2.8, 360, 10.4, 0.3],
   ['sim-7', '', '235900007', 'VSB007', 9, 36, 9, 3, 56.2595, -5.552, 215, 2, 300, 7.2, -0.5],
-  ['sim-8', 'MISTY DAWN', '235900008', 'VSB008', 22, 36, 14, 4, 56.1965, -5.585, 145, 2.2, 300, 11.9, 0.4],
-  ['sim-9', 'RIB ALPHA', '235900009', 'VSB009', 4, 37, 7, 2.5, 56.2085, -5.5755, 310, 4.5, 120, 5.5, -0.6],
-  ['sim-10', 'FISHER TWO', '235900010', 'VSB010', 75, 30, 18, 6, 56.176, -5.645, 340, 2.8, 360, 12.8, 1]
+  ['sim-8', 'SIM MISTY DAWN', '235900008', 'VSB008', 22, 36, 14, 4, 56.1965, -5.585, 145, 2.2, 300, 11.9, 0.4],
+  ['sim-9', 'SIM RIB ALPHA', '235900009', 'VSB009', 4, 37, 7, 2.5, 56.2085, -5.5755, 310, 4.5, 120, 5.5, -0.6],
+  ['sim-10', 'SIM FISHER TWO', '235900010', 'VSB010', 75, 30, 18, 6, 56.176, -5.645, 340, 2.8, 360, 12.8, 1]
 ]
 
 module.exports = function ajrmMarineSimulator(app) {
@@ -685,6 +688,7 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function targetStaticUpdates(target) {
     if (target.isFixedStation) return []
+    if (target.targetKind === 'sar-aircraft') return []
     const mmsi = transmittedMmsi(target)
     if (target.aisClass === 'A') {
       const values = [
@@ -734,6 +738,9 @@ module.exports = function ajrmMarineSimulator(app) {
         { path: '', value: { mmsi: transmittedMmsi(target) } },
         { path: 'sensors.ais.class', value: 'BASE' }
       ])
+    }
+    if (target.targetKind === 'sar-aircraft') {
+      return aisUpdate(129798, targetDynamicValues(target))
     }
     return aisUpdate(target.aisClass === 'A' ? 129038 : 129039, targetDynamicValues(target))
   }
@@ -797,17 +804,17 @@ module.exports = function ajrmMarineSimulator(app) {
       }
       values.push({ path: 'navigation.position', value: position })
     }
-    if (target.aisClass === 'A') {
+    if (target.aisClass === 'A' && target.targetKind !== 'sar-aircraft') {
       values.push(
         { path: 'navigation.rateOfTurn', value: rawDegToRad(target.rateOfTurnDegPerSecond || 0) },
         { path: 'navigation.state', value: navigationState(target) },
         { path: 'navigation.specialManeuver', value: 'not available' }
       )
     }
-    values.push(
-      { path: '', value: { mmsi: transmittedMmsi(target) } },
-      { path: 'sensors.ais.class', value: target.aisClass }
-    )
+    values.push({ path: '', value: { mmsi: transmittedMmsi(target) } })
+    if (target.targetKind !== 'sar-aircraft') {
+      values.push({ path: 'sensors.ais.class', value: target.aisClass })
+    }
     if (isEmergencyActive(target)) values.push({ path: '', value: { name: transmittedName(target) } })
     return values
   }
@@ -1053,13 +1060,22 @@ module.exports = function ajrmMarineSimulator(app) {
     if (!target) return null
     if (values.enabled != null) target.enabled = values.enabled === true
     if (values.autopilotEnabled != null && !target.isFixedStation) target.autopilotEnabled = values.autopilotEnabled === true
-    if (values.speedDirection) target.speedKn = clamp(target.speedKn + (values.speedDirection === 'down' ? -1 : 1), 0, 40, target.speedKn)
+    if (values.speedDirection) {
+      target.speedKn = clamp(
+        target.speedKn + (values.speedDirection === 'down' ? -1 : 1),
+        0,
+        targetSpeedLimit(target),
+        target.speedKn
+      )
+    }
     if (values.rudderDirection && !target.isFixedStation) {
       target.rudderAngleDeg = clamp(target.rudderAngleDeg + (values.rudderDirection === 'left' ? -5 : 5), -MAX_RUDDER_DEG, MAX_RUDDER_DEG, target.rudderAngleDeg)
       target.courseDeg = normalizeDeg(target.courseDeg + (values.rudderDirection === 'left' ? -10 : 10))
       target.routeTurning = false
     }
-    if (values.emergencyMode != null && !target.isFixedStation) target.emergencyMode = emergencyModeFor(values.emergencyMode)
+    if (values.emergencyMode != null && !target.isFixedStation && target.targetKind !== 'sar-aircraft') {
+      target.emergencyMode = emergencyModeFor(values.emergencyMode)
+    }
     if (values.gpsFaultMode != null && GPS_FAULT_MODES.includes(String(values.gpsFaultMode))) {
       target.gpsFaultMode = String(values.gpsFaultMode)
       if (target.gpsFaultMode !== 'spoof') target.gpsSpoofOffsetM = 0
@@ -1118,6 +1134,7 @@ module.exports = function ajrmMarineSimulator(app) {
         enabled: target.enabled,
         autopilotEnabled: target.autopilotEnabled,
         isFixedStation: target.isFixedStation,
+        targetKind: target.targetKind,
         emergencyMode: target.emergencyMode,
         gpsFaultMode: target.gpsFaultMode,
         aisClass: target.aisClass,
@@ -1152,6 +1169,7 @@ module.exports = function ajrmMarineSimulator(app) {
   }
 
   function normalizeConfig(props = {}) {
+    const configuredTargets = Array.isArray(props.targets) ? props.targets : defaultTargetConfig()
     return {
       sourceName: String(props.sourceName || 'ajrm-marine-simulator'),
       magneticVariationDeg: clamp(props.magneticVariationDeg, -180, 180, DEFAULT_MAGNETIC_VARIATION_DEG),
@@ -1161,9 +1179,20 @@ module.exports = function ajrmMarineSimulator(app) {
       routeTurnRudderAngleDeg: clamp(props.routeTurnRudderAngleDeg, 1, MAX_RUDDER_DEG, DEFAULT_ROUTE_RUDDER_DEG),
       own: props.own || {},
       environment: props.environment || {},
-      targets: Array.isArray(props.targets) ? props.targets : defaultTargetConfig(),
+      targets: ensureDefaultSarAircraft(configuredTargets),
       fixedStations: Array.isArray(props.fixedStations) ? props.fixedStations : defaultFixedStationConfig()
     }
+  }
+
+  function ensureDefaultSarAircraft(configuredTargets) {
+    if (configuredTargets.some((target) =>
+      target?.targetKind === 'sar-aircraft' || String(target?.mmsi || '') === SYNTHETIC_SAR_AIRCRAFT_MMSI)) {
+      return configuredTargets
+    }
+    const isDefaultSimulatorFleet = configuredTargets.some((target) => /^sim-\d+$/.test(String(target?.id || '')))
+    if (!isDefaultSimulatorFleet) return configuredTargets
+    const sarAircraft = defaultTargetConfig().find((target) => target.id === 'sim-sar-aircraft')
+    return sarAircraft ? [...configuredTargets, sarAircraft] : configuredTargets
   }
 
   function mergeRuntimeSettings(baseProps = {}, saved = null) {
@@ -1414,8 +1443,9 @@ module.exports = function ajrmMarineSimulator(app) {
   }
 
   function defaultTargetConfig() {
-    return DEFAULT_TARGETS.map(([id, name, mmsi, callsign, grossTonnage, aisShipType, length, width, latitude, longitude, course, speed, legDuration, aisFromBow, aisFromCenter]) => ({
+    const vessels = DEFAULT_TARGETS.map(([id, name, mmsi, callsign, grossTonnage, aisShipType, length, width, latitude, longitude, course, speed, legDuration, aisFromBow, aisFromCenter]) => ({
       id,
+      targetKind: 'vessel',
       enabled: true,
       autopilotEnabled: true,
       name,
@@ -1439,6 +1469,32 @@ module.exports = function ajrmMarineSimulator(app) {
       emergencyMode: 'none',
       gpsFaultMode: 'normal'
     }))
+    return [...vessels, {
+      id: 'sim-sar-aircraft',
+      targetKind: 'sar-aircraft',
+      enabled: true,
+      autopilotEnabled: true,
+      name: 'SIM SAR AIRCRAFT',
+      mmsi: SYNTHETIC_SAR_AIRCRAFT_MMSI,
+      callsign: '',
+      grossTonnage: 0,
+      aisShipType: 0,
+      aisClass: 'SAR',
+      length: 0,
+      width: 0,
+      draft: 0,
+      destination: '',
+      eta: '',
+      imo: '',
+      aisFromBow: 0,
+      aisFromCenter: 0,
+      startPosition: { latitude: 56.205, longitude: -5.72 },
+      initialCourseDeg: 90,
+      speedKn: 120,
+      legDuration: 240,
+      emergencyMode: 'none',
+      gpsFaultMode: 'normal'
+    }]
   }
 
   function defaultFixedStationConfig() {
@@ -1472,18 +1528,24 @@ module.exports = function ajrmMarineSimulator(app) {
     const width = clamp(raw.width, 0, 100, fallback.width)
     const mmsi = String(raw.mmsi || fallback.mmsi || '').trim()
     if (!mmsi) return null
+    const targetKind = raw.targetKind === 'sar-aircraft' || fallback.targetKind === 'sar-aircraft'
+      ? 'sar-aircraft'
+      : 'vessel'
     const position = raw.startPosition || {}
     const latitude = clamp(position.latitude, -90, 90, fallback.startPosition.latitude)
     const longitude = clamp(position.longitude, -180, 180, fallback.startPosition.longitude)
     return {
       id: String(raw.id || fallback.id || mmsi),
+      targetKind,
       enabled: raw.enabled !== false,
       name: String(raw.name ?? fallback.name ?? ''),
       mmsi,
       callsign: String(raw.callsign ?? fallback.callsign ?? ''),
       grossTonnage: clamp(raw.grossTonnage, 0, 500000, fallback.grossTonnage || 0),
       aisShipType: Math.round(clamp(raw.aisShipType, 0, 99, fallback.aisShipType || 36)),
-      aisClass: String(raw.aisClass || fallback.aisClass || ((Number(raw.grossTonnage || fallback.grossTonnage || 0) > 300) ? 'A' : 'B')).toUpperCase() === 'A' ? 'A' : 'B',
+      aisClass: targetKind === 'sar-aircraft'
+        ? 'SAR'
+        : (String(raw.aisClass || fallback.aisClass || ((Number(raw.grossTonnage || fallback.grossTonnage || 0) > 300) ? 'A' : 'B')).toUpperCase() === 'A' ? 'A' : 'B'),
       length,
       width,
       draft: clamp(raw.draft, 0, 30, fallback.draft ?? Math.max(0.5, round(width * 0.18, 1))),
@@ -1495,7 +1557,7 @@ module.exports = function ajrmMarineSimulator(app) {
       latitude,
       longitude,
       courseDeg: normalizeDeg(raw.initialCourseDeg ?? raw.courseDeg ?? fallback.initialCourseDeg ?? 0),
-      speedKn: clamp(raw.speedKn, 0, 40, fallback.speedKn ?? 0),
+      speedKn: clamp(raw.speedKn, 0, targetKind === 'sar-aircraft' ? MAX_SAR_AIRCRAFT_SPEED_KN : MAX_TARGET_SPEED_KN, fallback.speedKn ?? 0),
       legDuration: clamp(raw.legDuration, 10, 86400, fallback.legDuration ?? DEFAULT_LEG_SECONDS),
       autopilotEnabled: raw.autopilotEnabled !== false,
       routeTurning: false,
@@ -1503,7 +1565,9 @@ module.exports = function ajrmMarineSimulator(app) {
       legStartMs: Date.now(),
       rudderAngleDeg: 0,
       rateOfTurnDegPerSecond: 0,
-      emergencyMode: emergencyModeFor(raw.emergencyMode || fallback.emergencyMode || 'none'),
+      emergencyMode: targetKind === 'sar-aircraft'
+        ? EMERGENCY_MODES.none
+        : emergencyModeFor(raw.emergencyMode || fallback.emergencyMode || 'none'),
       gpsFaultMode: GPS_FAULT_MODES.includes(raw.gpsFaultMode) ? raw.gpsFaultMode : (fallback.gpsFaultMode || 'normal'),
       gpsSpoofOffsetM: 0,
       isFixedStation: false
@@ -1550,9 +1614,10 @@ module.exports = function ajrmMarineSimulator(app) {
         enabled: { type: 'boolean', title: 'Enabled', default: true },
         autopilotEnabled: { type: 'boolean', title: 'Auto-reverse enabled', default: true },
         name: { type: 'string', title: 'Vessel name' },
+        targetKind: { type: 'string', title: 'Target category', enum: ['vessel', 'sar-aircraft'], default: 'vessel' },
         mmsi: { type: 'string', title: 'MMSI' },
         callsign: { type: 'string', title: 'Call sign' },
-        aisClass: { type: 'string', title: 'AIS class', enum: ['A', 'B'], default: 'B' },
+        aisClass: { type: 'string', title: 'AIS class', enum: ['A', 'B', 'SAR'], default: 'B' },
         grossTonnage: { type: 'number', title: 'Gross tonnage', default: 12 },
         aisShipType: { type: 'number', title: 'AIS ship type id', default: 36 },
         length: { type: 'number', title: 'Length (m)', default: 10 },
@@ -1656,7 +1721,7 @@ module.exports = function ajrmMarineSimulator(app) {
         targets: {
           type: 'array',
           title: 'AIS targets',
-          description: 'Moving simulated AIS vessels. Edit these to change the target fleet published by the simulator.',
+          description: 'Moving simulated AIS vessels and SAR aircraft. Edit these to change the target fleet published by the simulator.',
           maxItems: 20,
           items: targetSchema(),
           default: defaultTargetConfig()
@@ -1856,6 +1921,10 @@ function clampInteger(value, min, max, fallback) {
 function round(value, decimals = 0) {
   const factor = 10 ** decimals
   return Math.round(Number(value) * factor) / factor
+}
+
+function targetSpeedLimit(target) {
+  return target?.targetKind === 'sar-aircraft' ? MAX_SAR_AIRCRAFT_SPEED_KN : MAX_TARGET_SPEED_KN
 }
 
 module.exports._test = {

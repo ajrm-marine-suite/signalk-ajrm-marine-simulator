@@ -52,7 +52,10 @@ Leave output off when sailing for real.
 - Apparent/true wind values with optional variation.
 - Cross-current/tide set and drift with optional variation.
 - Engine room temperature, exhaust water temperature, and basic battery values.
-- AIS target vessels, fixed AIS stations, target auto-reverse routes, emergency
+- AIS target vessels, a synthetic SAR helicopter, fixed AIS stations, target
+  auto-reverse routes, and emergency/GNSS fault modes. Default vessel names use
+  the `SIM` prefix; the deliberately unnamed AIS target remains available for
+  missing-static-data tests.
 - Captured-data-compatible NMEA 2000 grouping for the principal YDEN
   navigation, instrument, GNSS, autopilot, route, AIS Class A, AIS Class B,
   and AIS base-station PGNs. The simulator intentionally does not reproduce
