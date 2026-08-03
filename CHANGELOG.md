@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.5
+
+- Add headings to the target table for GPS fault simulation and AIS emergency
+  identity mode.
+- Show the vessel-only emergency identity selector as explicitly not applicable
+  for SAR aircraft and AIS base stations instead of leaving it blank.
+- Keep the SAR aircraft's internal emergency-mode state as the explicit `none`
+  identifier.
+
 ## 0.7.4
 
 - Migrate already-saved default `sim-1` through `sim-10` target names to the

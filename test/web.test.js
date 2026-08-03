@@ -80,6 +80,13 @@ test('web app keeps target actions and toggles in separate columns', () => {
   assert.match(html, /toggles\.className = "target-toggles"/)
 })
 
+test('web app labels target selectors and marks emergency identity unavailable for SAR aircraft', () => {
+  assert.match(html, />GPS signal</)
+  assert.match(html, />AIS emergency identity</)
+  assert.match(html, /N\/A — SAR aircraft/)
+  assert.match(html, /target\.targetKind === "sar-aircraft"/)
+})
+
 test('web app controls environment variation', () => {
   assert.match(html, /id="environmentEnabled"/)
   assert.match(html, /Publish simulated environment/)

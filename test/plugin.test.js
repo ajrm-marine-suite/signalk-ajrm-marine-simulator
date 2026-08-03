@@ -233,6 +233,7 @@ test('default fleet publishes a synthetic SAR aircraft using the AIS SAR aircraf
       .find((target) => target.mmsi === '111000599')
     assert.equal(sarTarget.targetKind, 'sar-aircraft')
     assert.equal(sarTarget.aisClass, 'SAR')
+    assert.equal(sarTarget.emergencyMode, 'none')
   } finally {
     plugin.stop()
   }

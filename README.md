@@ -56,6 +56,9 @@ Leave output off when sailing for real.
   auto-reverse routes, and emergency/GNSS fault modes. Default vessel names use
   the `SIM` prefix; the deliberately unnamed AIS target remains available for
   missing-static-data tests.
+- The AIS target table separates GPS signal fault simulation from vessel-only
+  AIS emergency identity modes (Normal, AIS-SART, MOB-AIS, and EPIRB-AIS). The
+  emergency identity mode is not applicable to SAR aircraft or base stations.
 - Captured-data-compatible NMEA 2000 grouping for the principal YDEN
   navigation, instrument, GNSS, autopilot, route, AIS Class A, AIS Class B,
   and AIS base-station PGNs. The simulator intentionally does not reproduce

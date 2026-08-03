@@ -298,6 +298,18 @@
         background: #141d20;
       }
 
+      .target-header {
+        display: grid;
+        grid-template-columns: minmax(160px, 1fr) 78px 76px 132px 116px 152px 58px;
+        gap: 8px;
+        padding: 0 8px;
+        color: #9eb0b8;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+
       .name {
         font-weight: 800;
       }
@@ -383,6 +395,7 @@
       @media (max-width: 1100px) {
         .section-grid, .own-layout { grid-template-columns: 1fr; }
         .target { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .target-header { display: none; }
         .own-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
 
@@ -428,6 +441,15 @@
               <button id="enableAllTargets" type="button">Enable all</button>
               <button id="disableAllTargets" type="button">Disable all</button>
             </div>
+          </div>
+          <div class="target-header" aria-hidden="true">
+            <span>Target</span>
+            <span>Course</span>
+            <span>Speed</span>
+            <span>GPS signal</span>
+            <span>AIS emergency identity</span>
+            <span>Manual controls</span>
+            <span>On / AR</span>
           </div>
           <div id="targets" class="targets"></div>
         </div>
@@ -730,10 +752,17 @@
           gps.value = target.gpsFaultMode;
           gps.addEventListener("change", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { gpsFaultMode: gps.value }));
           const emergency = document.createElement("select");
-          for (const [value, label] of [["none", "Normal"], ["sart", "AIS-SART"], ["mob", "MOB-AIS"], ["epirb", "EPIRB-AIS"]]) emergency.append(new Option(label, value));
-          emergency.value = target.emergencyMode || "none";
-          emergency.disabled = target.isFixedStation;
-          emergency.addEventListener("change", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { emergencyMode: emergency.value }));
+          if (target.targetKind === "sar-aircraft") {
+            emergency.append(new Option("N/A — SAR aircraft", "not-applicable"));
+            emergency.disabled = true;
+          } else if (target.isFixedStation) {
+            emergency.append(new Option("N/A — base station", "not-applicable"));
+            emergency.disabled = true;
+          } else {
+            for (const [value, label] of [["none", "Normal"], ["sart", "AIS-SART"], ["mob", "MOB-AIS"], ["epirb", "EPIRB-AIS"]]) emergency.append(new Option(label, value));
+            emergency.value = target.emergencyMode || "none";
+            emergency.addEventListener("change", () => post(`/targets/${encodeURIComponent(target.id)}/control`, { emergencyMode: emergency.value }));
+          }
           const actions = document.createElement("div");
           actions.className = "target-actions";
           actions.append(

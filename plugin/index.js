@@ -1572,7 +1572,7 @@ module.exports = function ajrmMarineSimulator(app) {
       rudderAngleDeg: 0,
       rateOfTurnDegPerSecond: 0,
       emergencyMode: targetKind === 'sar-aircraft'
-        ? EMERGENCY_MODES.none
+        ? 'none'
         : emergencyModeFor(raw.emergencyMode || fallback.emergencyMode || 'none'),
       gpsFaultMode: GPS_FAULT_MODES.includes(raw.gpsFaultMode) ? raw.gpsFaultMode : (fallback.gpsFaultMode || 'normal'),
       gpsSpoofOffsetM: 0,
