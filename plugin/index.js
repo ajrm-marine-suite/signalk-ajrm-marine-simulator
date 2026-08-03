@@ -1185,14 +1185,20 @@ module.exports = function ajrmMarineSimulator(app) {
   }
 
   function ensureDefaultSarAircraft(configuredTargets) {
-    if (configuredTargets.some((target) =>
+    const identifiedTargets = configuredTargets.map((target) => {
+      const isDefaultSimulatorTarget = /^sim-\d+$/.test(String(target?.id || ''))
+      const name = String(target?.name || '')
+      if (!isDefaultSimulatorTarget || !name || /^SIM\b/i.test(name)) return target
+      return { ...target, name: `SIM ${name}` }
+    })
+    if (identifiedTargets.some((target) =>
       target?.targetKind === 'sar-aircraft' || String(target?.mmsi || '') === SYNTHETIC_SAR_AIRCRAFT_MMSI)) {
-      return configuredTargets
+      return identifiedTargets
     }
-    const isDefaultSimulatorFleet = configuredTargets.some((target) => /^sim-\d+$/.test(String(target?.id || '')))
-    if (!isDefaultSimulatorFleet) return configuredTargets
+    const isDefaultSimulatorFleet = identifiedTargets.some((target) => /^sim-\d+$/.test(String(target?.id || '')))
+    if (!isDefaultSimulatorFleet) return identifiedTargets
     const sarAircraft = defaultTargetConfig().find((target) => target.id === 'sim-sar-aircraft')
-    return sarAircraft ? [...configuredTargets, sarAircraft] : configuredTargets
+    return sarAircraft ? [...identifiedTargets, sarAircraft] : identifiedTargets
   }
 
   function mergeRuntimeSettings(baseProps = {}, saved = null) {

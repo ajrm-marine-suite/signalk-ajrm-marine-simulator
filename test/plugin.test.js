@@ -244,11 +244,14 @@ test('existing default-style fleets gain the synthetic SAR aircraft once', () =>
   plugin.registerWithRouter(routerMap(routes))
   const oldDefaults = plugin.schema.properties.targets.default
     .filter((target) => target.id !== 'sim-sar-aircraft')
+    .map((target) => target.id === 'sim-1' ? { ...target, name: 'LEGACY TARGET' } : target)
   try {
     plugin.start({ targets: oldDefaults })
-    const sarTargets = invoke(routes, 'GET', '/state').targets
+    const state = invoke(routes, 'GET', '/state')
+    const sarTargets = state.targets
       .filter((target) => target.mmsi === '111000599')
     assert.equal(sarTargets.length, 1)
+    assert.equal(state.targets.find((target) => target.id === 'sim-1').label, 'SIM LEGACY TARGET')
   } finally {
     plugin.stop()
   }

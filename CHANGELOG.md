@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.4
+
+- Migrate already-saved default `sim-1` through `sim-10` target names to the
+  `SIM` prefix as well as applying it to fresh installations.
+
 ## 0.7.3
 
 - Add an explicitly typed synthetic SAR helicopter using reserved test MMSI
