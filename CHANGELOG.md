@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.6
+
+- Import one ordered GPX route or track instead of concatenating an OpenCPN
+  waypoint catalogue with the same route points.
+- Add an explicit default-off GPX route Auto reverse option for unattended soak
+  testing. Normal route playback still stops with zero speed at the final point.
+
 ## 0.7.5
 
 - Add headings to the target table for GPS fault simulation and AIS emergency

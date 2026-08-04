@@ -40,7 +40,9 @@ Leave output off when sailing for real.
   GPX route following while retaining simulated AIS targets and environment
   data.
 - GPX route following has its own Play, Pause, and Stop controls separate from
-  the master Run simulator switch.
+  the master Run simulator switch. It stops with zero speed at the final point
+  by default; the explicit Auto reverse option continuously traverses the route
+  in both directions for unattended soak testing.
 - Own-vessel auto-reverse heading tests for unattended soak tests.
 - GNSS quality with varying HDOP, VDOP, PDOP, satellites used/in-view, signal
   strength, and GPS/GLONASS/Galileo/BeiDou constellation summaries. The

@@ -186,6 +186,14 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
+    router.post('/own/gpx-route/options', (req, res) => {
+      if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
+      if (!own.gpxRoute?.points?.length) return res.status(400).json({ error: 'Load a GPX route before changing route options' })
+      own.gpxRoute = { ...own.gpxRoute, autoReverse: req.body?.autoReverse === true }
+      saveRuntimeSettings()
+      res.json(publicState())
+    })
+
     router.post('/own/gpx-route/playback', (req, res) => {
       if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const action = String(req.body?.action || '')
@@ -202,7 +210,8 @@ module.exports = function ajrmMarineSimulator(app) {
           ...own.gpxRoute,
           enabled: action === 'restart',
           playState: action === 'restart' ? 'playing' : 'stopped',
-          completed: false
+          completed: false,
+          direction: 'forward'
         }
         own.motionMode = 'route'
         own.autopilotEnabled = false
@@ -867,23 +876,34 @@ module.exports = function ajrmMarineSimulator(app) {
   function steerOwnToGpxRoute() {
     const route = own.gpxRoute
     if (!route?.points.length) return
+    let direction = route.direction === 'reverse' ? -1 : 1
     let index = clampInteger(own.gpxRouteIndex, 0, route.points.length - 1, route.points.length > 1 ? 1 : 0)
-    while (index < route.points.length) {
+    while (index >= 0 && index < route.points.length) {
       const target = route.points[index]
       const distance = distanceMeters(own.latitude, own.longitude, target.latitude, target.longitude)
-      if (distance > route.arrivalRadiusM || index >= route.points.length - 1) break
-      index += 1
+      const atEndpoint = direction > 0 ? index >= route.points.length - 1 : index <= 0
+      if (distance > route.arrivalRadiusM || atEndpoint) break
+      index += direction
     }
     own.gpxRouteIndex = index
-    const target = route.points[index]
+    let target = route.points[index]
     if (!target) return
     const remainingDistance = distanceMeters(own.latitude, own.longitude, target.latitude, target.longitude)
-    if (index >= route.points.length - 1 && remainingDistance <= route.arrivalRadiusM) {
-      own.gpxRoute = { ...route, enabled: false, completed: true, playState: 'stopped' }
-      own.motionMode = 'route'
-      own.gpxRouteIndex = index
-      own.speedKn = 0
-      return
+    const atEndpoint = direction > 0 ? index >= route.points.length - 1 : index <= 0
+    if (atEndpoint && remainingDistance <= route.arrivalRadiusM) {
+      if (route.autoReverse === true && route.points.length > 1) {
+        direction *= -1
+        index += direction
+        own.gpxRoute = { ...route, direction: direction > 0 ? 'forward' : 'reverse', completed: false }
+        own.gpxRouteIndex = index
+        target = route.points[index]
+      } else {
+        own.gpxRoute = { ...route, enabled: false, completed: true, playState: 'stopped' }
+        own.motionMode = 'route'
+        own.gpxRouteIndex = index
+        own.speedKn = 0
+        return
+      }
     }
     own.headingDeg = bearingDegrees(own.latitude, own.longitude, target.latitude, target.longitude)
     own.routeTurning = false
@@ -1369,6 +1389,8 @@ module.exports = function ajrmMarineSimulator(app) {
       name: '',
       points: [],
       playState: 'stopped',
+      autoReverse: false,
+      direction: 'forward',
       arrivalRadiusM: DEFAULT_GPX_ARRIVAL_RADIUS_M
     }
   }
@@ -1386,6 +1408,8 @@ module.exports = function ajrmMarineSimulator(app) {
       name: String(input.name || '').trim().slice(0, 120),
       points,
       playState: gpxPlayState(input.playState, points.length > 0 && input.enabled !== false ? 'playing' : 'stopped'),
+      autoReverse: input.autoReverse === true,
+      direction: input.direction === 'reverse' ? 'reverse' : 'forward',
       arrivalRadiusM: clamp(input.arrivalRadiusM, 5, 500, DEFAULT_GPX_ARRIVAL_RADIUS_M)
     }
   }
@@ -1400,6 +1424,8 @@ module.exports = function ajrmMarineSimulator(app) {
       pointCount: points.length,
       index: safeIndex,
       playState: gpxPlayState(route.playState, route.enabled === true ? 'playing' : 'stopped'),
+      autoReverse: route.autoReverse === true,
+      direction: route.direction === 'reverse' ? 'reverse' : 'forward',
       arrivalRadiusM: route.arrivalRadiusM || DEFAULT_GPX_ARRIVAL_RADIUS_M,
       nextPoint: points[safeIndex]
         ? {

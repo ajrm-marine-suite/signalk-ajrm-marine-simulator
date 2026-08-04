@@ -547,6 +547,7 @@
                   <button id="clearGpxRoute" type="button">Clear GPX</button>
                 </div>
                 <div id="gpxRouteName" class="route-name">No GPX file selected</div>
+                <label><span><input id="gpxAutoReverse" type="checkbox"> Auto reverse route for soak testing</span></label>
                 <div class="transport-row" aria-label="GPX route controls">
                   <button id="restartGpxRoute" type="button" title="Restart route" aria-label="Restart route">⏮</button>
                   <button id="playGpxRoute" type="button" title="Play route" aria-label="Play route">▶</button>
@@ -589,6 +590,7 @@
       </section>
     </main>
 
+    <script src="gpx-route.js"></script>
     <script>
       const apiBase = "/plugins/signalk-ajrm-marine-simulator";
       const els = {
@@ -622,6 +624,7 @@
         gpxFile: document.getElementById("gpxFile"),
         selectGpxFile: document.getElementById("selectGpxFile"),
         gpxRouteName: document.getElementById("gpxRouteName"),
+        gpxAutoReverse: document.getElementById("gpxAutoReverse"),
         restartGpxRoute: document.getElementById("restartGpxRoute"),
         playGpxRoute: document.getElementById("playGpxRoute"),
         pauseGpxRoute: document.getElementById("pauseGpxRoute"),
@@ -713,12 +716,17 @@
           return;
         }
         els.gpxRouteName.textContent = route.name || "Unnamed GPX route";
+        els.gpxAutoReverse.checked = route.autoReverse === true;
         const playState = route.playState || (route.enabled ? "playing" : route.completed ? "stopped" : "paused");
         els.restartGpxRoute.disabled = false;
         els.playGpxRoute.disabled = playState === "playing";
         els.pauseGpxRoute.disabled = playState !== "playing";
         els.stopGpxRoute.disabled = playState === "stopped" && Math.min(route.index + 1, route.pointCount) <= 2;
-        const active = route.completed ? "complete" : playState;
+        const active = route.completed
+          ? "complete"
+          : route.direction === "reverse"
+            ? `${playState}, returning`
+            : playState;
         els.gpxStatus.textContent = `${route.pointCount} points · waypoint ${Math.min(route.index + 1, route.pointCount)} of ${route.pointCount} · ${active}`;
       }
 
@@ -898,6 +906,11 @@
       els.playGpxRoute.addEventListener("click", () => post("/own/gpx-route/playback", { action: "play" }));
       els.pauseGpxRoute.addEventListener("click", () => post("/own/gpx-route/playback", { action: "pause" }));
       els.stopGpxRoute.addEventListener("click", () => post("/own/gpx-route/playback", { action: "stop" }));
+      els.gpxAutoReverse.addEventListener("change", () => {
+        if (state?.own?.gpxRoute?.pointCount) {
+          post("/own/gpx-route/options", { autoReverse: els.gpxAutoReverse.checked });
+        }
+      });
       els.clearGpxRoute.addEventListener("click", () => post("/own/gpx-route/clear", {}));
       els.resetOwn.addEventListener("click", () => post("/own/reset", {}));
       document.querySelectorAll("[data-own-heading]").forEach((button) => button.addEventListener("click", () => post("/own/heading", { direction: button.dataset.ownHeading })));
@@ -919,7 +932,8 @@
           if (points.length === 0) throw new Error("No GPX route, track, or waypoint points found.");
           await post("/own/gpx-route", {
             name: file.name.replace(/\.gpx$/i, ""),
-            points
+            points,
+            autoReverse: els.gpxAutoReverse.checked
           });
         } catch (error) {
           els.status.textContent = error.message;
@@ -929,7 +943,11 @@
       function parseGpxPoints(text) {
         const doc = new DOMParser().parseFromString(text, "application/xml");
         if (doc.querySelector("parsererror")) throw new Error("Could not read GPX file.");
-        const nodes = Array.from(doc.querySelectorAll("trkpt, rtept, wpt"));
+        const nodes = AjrmSimulatorGpx.selectGpxPointNodes({
+          routeGroups: Array.from(doc.querySelectorAll("rte"), (route) => route.querySelectorAll("rtept")),
+          trackGroups: Array.from(doc.querySelectorAll("trk"), (track) => track.querySelectorAll("trkpt")),
+          waypoints: doc.querySelectorAll("wpt")
+        });
         return nodes.map((node) => ({
           latitude: Number(node.getAttribute("lat")),
           longitude: Number(node.getAttribute("lon"))

@@ -580,6 +580,8 @@ test('loaded GPX route starts own boat at first point and steers toward next poi
     assert.equal(state.own.longitude, -5.7)
     assert.equal(state.own.gpxRoute.enabled, false)
     assert.equal(state.own.gpxRoute.playState, 'stopped')
+    assert.equal(state.own.gpxRoute.autoReverse, false)
+    assert.equal(state.own.gpxRoute.direction, 'forward')
     assert.equal(state.own.gpxRoute.pointCount, 2)
     assert.equal(state.own.gpxRoute.index, 1)
 
@@ -648,6 +650,72 @@ test('GPX route following does not bounce around waypoints at high speed', async
     assert.equal(state.own.speedKn, 0)
     assert.ok(Math.abs(state.own.latitude - 56.302) < 0.0002)
     assert.ok(Math.abs(state.own.longitude + 5.7) < 0.0002)
+  } finally {
+    plugin?.stop()
+    Date.now = realDateNow
+    global.setInterval = realSetInterval
+    global.clearInterval = realClearInterval
+  }
+})
+
+test('GPX route auto reverse continuously traverses both directions for soak testing', () => {
+  const routes = new Map()
+  const realDateNow = Date.now
+  const realSetInterval = global.setInterval
+  const realClearInterval = global.clearInterval
+  let now = Date.parse('2026-08-04T12:00:00.000Z')
+  let tick = null
+  Date.now = () => now
+  global.setInterval = (handler) => {
+    tick = handler
+    return 1
+  }
+  global.clearInterval = () => {}
+  const app = { setPluginStatus() {}, handleMessage() {} }
+  let plugin
+  try {
+    plugin = createPlugin(app)
+    plugin.registerWithRouter(routerMap(routes))
+    plugin.start({
+      outputPeriod: 1,
+      own: { initialSpeedKn: 20 },
+      environment: { currentDriftKn: 0, currentVarying: false }
+    })
+    let state = invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Soak route',
+      autoReverse: true,
+      points: [
+        { latitude: 56.300000, longitude: -5.700000 },
+        { latitude: 56.301000, longitude: -5.700000 },
+        { latitude: 56.302000, longitude: -5.700000 }
+      ]
+    })
+    assert.equal(state.own.gpxRoute.autoReverse, true)
+    invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
+    invoke(routes, 'POST', '/output', { enabled: true })
+
+    for (let i = 0; i < 40 && state.own.gpxRoute.direction !== 'reverse'; i += 1) {
+      now += 1000
+      tick()
+      state = invoke(routes, 'GET', '/state')
+    }
+    assert.equal(state.own.gpxRoute.direction, 'reverse')
+    assert.equal(state.own.gpxRoute.enabled, true)
+    assert.equal(state.own.gpxRoute.playState, 'playing')
+    assert.equal(state.own.speedKn, 20)
+
+    for (let i = 0; i < 40 && state.own.gpxRoute.direction !== 'forward'; i += 1) {
+      now += 1000
+      tick()
+      state = invoke(routes, 'GET', '/state')
+    }
+    assert.equal(state.own.gpxRoute.direction, 'forward')
+    assert.equal(state.own.gpxRoute.enabled, true)
+    assert.equal(state.own.gpxRoute.playState, 'playing')
+    assert.equal(state.own.speedKn, 20)
+
+    state = invoke(routes, 'POST', '/own/gpx-route/options', { autoReverse: false })
+    assert.equal(state.own.gpxRoute.autoReverse, false)
   } finally {
     plugin?.stop()
     Date.now = realDateNow
