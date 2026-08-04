@@ -1366,7 +1366,9 @@ module.exports = function ajrmMarineSimulator(app) {
       gpsFaultMode: GPS_FAULT_MODES.includes(ownConfig.gpsFaultMode) ? ownConfig.gpsFaultMode : 'normal',
       gpsSpoofOffsetM: 0,
       gpxRoute,
-      gpxRouteIndex: clampInteger(ownConfig.gpxRouteIndex, 0, Math.max(0, gpxRoute.points.length - 1), gpxRoute.points.length > 1 ? 1 : 0)
+      gpxRouteIndex: gpxRoute.normalization
+        ? (gpxRoute.points.length > 1 ? 1 : 0)
+        : clampInteger(ownConfig.gpxRouteIndex, 0, Math.max(0, gpxRoute.points.length - 1), gpxRoute.points.length > 1 ? 1 : 0)
     }
   }
 
@@ -1391,27 +1393,51 @@ module.exports = function ajrmMarineSimulator(app) {
       playState: 'stopped',
       autoReverse: false,
       direction: 'forward',
+      normalization: null,
       arrivalRadiusM: DEFAULT_GPX_ARRIVAL_RADIUS_M
     }
   }
 
   function gpxRouteFromInput(input = {}) {
-    const points = Array.isArray(input.points)
+    const importedPoints = Array.isArray(input.points)
       ? input.points
         .map((point) => startPositionFromInput(point, null))
         .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))
         .slice(0, MAX_GPX_ROUTE_POINTS)
       : []
+    const normalized = normalizeGpxRoutePoints(importedPoints)
+    const points = normalized.points
+    const correctedLegacyRoute = normalized.normalization != null
     return {
       enabled: points.length > 0 && input.enabled !== false,
-      completed: input.completed === true && points.length > 0,
+      completed: !correctedLegacyRoute && input.completed === true && points.length > 0,
       name: String(input.name || '').trim().slice(0, 120),
       points,
-      playState: gpxPlayState(input.playState, points.length > 0 && input.enabled !== false ? 'playing' : 'stopped'),
+      playState: correctedLegacyRoute
+        ? 'stopped'
+        : gpxPlayState(input.playState, points.length > 0 && input.enabled !== false ? 'playing' : 'stopped'),
       autoReverse: input.autoReverse === true,
-      direction: input.direction === 'reverse' ? 'reverse' : 'forward',
+      direction: correctedLegacyRoute ? 'forward' : (input.direction === 'reverse' ? 'reverse' : 'forward'),
+      normalization: normalized.normalization,
       arrivalRadiusM: clamp(input.arrivalRadiusM, 5, 500, DEFAULT_GPX_ARRIVAL_RADIUS_M)
     }
+  }
+
+  function normalizeGpxRoutePoints(points = []) {
+    if (points.length >= 4 && points.length % 2 === 0) {
+      const half = points.length / 2
+      const repeated = points.slice(0, half).every((point, index) => {
+        const duplicate = points[index + half]
+        return point.latitude === duplicate.latitude && point.longitude === duplicate.longitude
+      })
+      if (repeated) {
+        return {
+          points: points.slice(0, half),
+          normalization: 'legacy-duplicated-sequence-collapsed'
+        }
+      }
+    }
+    return { points, normalization: null }
   }
 
   function publicGpxRoute(route = emptyGpxRoute(), index = 0) {
@@ -1426,6 +1452,7 @@ module.exports = function ajrmMarineSimulator(app) {
       playState: gpxPlayState(route.playState, route.enabled === true ? 'playing' : 'stopped'),
       autoReverse: route.autoReverse === true,
       direction: route.direction === 'reverse' ? 'reverse' : 'forward',
+      normalization: route.normalization || null,
       arrivalRadiusM: route.arrivalRadiusM || DEFAULT_GPX_ARRIVAL_RADIUS_M,
       nextPoint: points[safeIndex]
         ? {

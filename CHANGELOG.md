@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.7
+
+- Normalize the exact duplicated-route sequence produced by the legacy GPX
+  importer, including already-persisted runtime routes, so Auto reverse turns
+  onto the next waypoint instead of steering directly across the route.
+- Show when this legacy route correction has been applied in the Simulator UI.
+
 ## 0.7.6
 
 - Import one ordered GPX route or track instead of concatenating an OpenCPN

@@ -724,6 +724,73 @@ test('GPX route auto reverse continuously traverses both directions for soak tes
   }
 })
 
+test('legacy GPX routes containing two identical point sequences are normalized before auto reverse', () => {
+  const routes = new Map()
+  const app = { setPluginStatus() {}, handleMessage() {} }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({})
+    const sequence = [
+      { latitude: 56.300000, longitude: -5.700000 },
+      { latitude: 56.301000, longitude: -5.700000 },
+      { latitude: 56.302000, longitude: -5.700000 }
+    ]
+    const state = invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Legacy duplicated route',
+      autoReverse: true,
+      points: [...sequence, ...sequence]
+    })
+
+    assert.equal(state.own.gpxRoute.pointCount, 3)
+    assert.equal(state.own.gpxRoute.index, 1)
+    assert.equal(state.own.gpxRoute.autoReverse, true)
+    assert.equal(state.own.gpxRoute.normalization, 'legacy-duplicated-sequence-collapsed')
+    assert.deepEqual(state.own.gpxRoute.nextPoint, sequence[1])
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('a legacy duplicated GPX route is normalized when restored from runtime settings', () => {
+  const routes = new Map()
+  const app = { setPluginStatus() {}, handleMessage() {} }
+  const plugin = createPlugin(app)
+  plugin.registerWithRouter(routerMap(routes))
+  const sequence = [
+    { latitude: 56.300000, longitude: -5.700000 },
+    { latitude: 56.301000, longitude: -5.700000 },
+    { latitude: 56.302000, longitude: -5.700000 }
+  ]
+  fs.writeFileSync(runtimeSettingsFile, JSON.stringify({
+    version: 1,
+    own: {
+      motionMode: 'route',
+      gpxRouteIndex: 5,
+      gpxRoute: {
+        enabled: true,
+        name: 'Persisted legacy route',
+        playState: 'playing',
+        autoReverse: true,
+        direction: 'reverse',
+        points: [...sequence, ...sequence]
+      }
+    }
+  }))
+
+  try {
+    plugin.start({})
+    const state = invoke(routes, 'GET', '/state')
+    assert.equal(state.own.gpxRoute.pointCount, 3)
+    assert.equal(state.own.gpxRoute.index, 1)
+    assert.equal(state.own.gpxRoute.direction, 'forward')
+    assert.equal(state.own.gpxRoute.playState, 'stopped')
+    assert.equal(state.own.gpxRoute.normalization, 'legacy-duplicated-sequence-collapsed')
+  } finally {
+    plugin.stop()
+  }
+})
+
 test('own boat speed controls allow high-speed testing up to 999 knots', () => {
   const routes = new Map()
   const app = {
