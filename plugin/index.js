@@ -165,11 +165,11 @@ module.exports = function ajrmMarineSimulator(app) {
       own.routeTargetDeg = null
       const first = route.points[0]
       own.startPosition = { latitude: first.latitude, longitude: first.longitude }
+      own.latitude = first.latitude
+      own.longitude = first.longitude
+      own.gpsSpoofOffsetM = 0
       cfg.own = { ...(cfg.own || {}), startPosition: own.startPosition, gpxRoute: own.gpxRoute, gpxRouteIndex: own.gpxRouteIndex }
       if (!cfg.outputEnabled) {
-        own.latitude = first.latitude
-        own.longitude = first.longitude
-        own.gpsSpoofOffsetM = 0
         publishOwn({ includePosition: true })
       }
       saveRuntimeSettings()
@@ -615,12 +615,27 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function ownGroundMotion() {
     const currentDriftKn = env.enabled === false ? 0 : env.currentDriftKn
-    return groundMotionForHeading({
+    const motion = groundMotionForHeading({
       headingDeg: own.headingDeg,
       speedThroughWaterKn: own.speedKn,
       currentSetDeg: env.currentSetDeg,
       currentDriftKn
     })
+    if (own.motionMode !== 'route' || !own.gpxRoute?.enabled) return motion
+    const target = own.gpxRoute.points[own.gpxRouteIndex]
+    if (!target) return motion
+    const groundTrackDeg = bearingDegrees(
+      own.latitude,
+      own.longitude,
+      target.latitude,
+      target.longitude
+    )
+    const courseDifferenceRad = degToRad(motion.courseDeg - groundTrackDeg)
+    return {
+      ...motion,
+      courseDeg: groundTrackDeg,
+      speedOverGroundMps: Math.max(0, motion.speedOverGroundMps * Math.cos(courseDifferenceRad))
+    }
   }
 
   function ownGpsValues({ includePosition = true } = {}) {
@@ -905,7 +920,18 @@ module.exports = function ajrmMarineSimulator(app) {
         return
       }
     }
-    own.headingDeg = bearingDegrees(own.latitude, own.longitude, target.latitude, target.longitude)
+    const desiredGroundTrackDeg = bearingDegrees(
+      own.latitude,
+      own.longitude,
+      target.latitude,
+      target.longitude
+    )
+    own.headingDeg = courseToSteerForGroundTrack({
+      groundTrackDeg: desiredGroundTrackDeg,
+      speedThroughWaterKn: own.speedKn,
+      currentSetDeg: env.enabled === false ? desiredGroundTrackDeg : env.currentSetDeg,
+      currentDriftKn: env.enabled === false ? 0 : env.currentDriftKn
+    })
     own.routeTurning = false
     own.routeTargetDeg = null
     own.rudderAngleDeg = 0
@@ -1891,6 +1917,29 @@ function groundMotionForHeading({ headingDeg, speedThroughWaterKn, currentSetDeg
     courseDeg: speedOverGroundMps > 0 ? normalizeDeg(Math.atan2(east, north) * 180 / Math.PI) : heading,
     speedOverGroundMps
   }
+}
+
+function courseToSteerForGroundTrack({ groundTrackDeg, speedThroughWaterKn, currentSetDeg, currentDriftKn }) {
+  const track = normalizeDeg(groundTrackDeg)
+  const trackRad = degToRad(track)
+  const waterSpeed = Math.max(0, Number(speedThroughWaterKn) || 0) * KNOTS_TO_MPS
+  const currentSpeed = Math.max(0, Number(currentDriftKn) || 0) * KNOTS_TO_MPS
+  if (waterSpeed <= 0 || currentSpeed <= 0) return track
+
+  const currentRad = degToRad(currentSetDeg)
+  const currentNorth = Math.cos(currentRad) * currentSpeed
+  const currentEast = Math.sin(currentRad) * currentSpeed
+  const rightNorth = -Math.sin(trackRad)
+  const rightEast = Math.cos(trackRad)
+  const currentCrossTrack = currentNorth * rightNorth + currentEast * rightEast
+  if (Math.abs(currentCrossTrack) >= waterSpeed) return track
+
+  const waterAlongTrack = Math.sqrt(Math.max(0, waterSpeed * waterSpeed - currentCrossTrack * currentCrossTrack))
+  const trackNorth = Math.cos(trackRad)
+  const trackEast = Math.sin(trackRad)
+  const waterNorth = trackNorth * waterAlongTrack - rightNorth * currentCrossTrack
+  const waterEast = trackEast * waterAlongTrack - rightEast * currentCrossTrack
+  return normalizeDeg(Math.atan2(waterEast, waterNorth) * 180 / Math.PI)
 }
 
 function offsetMeters(latitude, longitude, northM, eastM) {

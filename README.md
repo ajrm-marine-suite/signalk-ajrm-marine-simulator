@@ -5,6 +5,11 @@
 
 Unified Signal K simulator for AJRM Marine Suite testing.
 
+Version `0.7.8` places own vessel on the first GPX point whenever a route is
+loaded and follows each route leg as a deterministic ground track. Simulated
+current remains published and the vessel's heading crabs into it, but the
+current no longer pushes route playback away from the displayed GPX line.
+
 This plugin combines own-vessel, environment, GNSS, fixed-station, and moving
 AIS target simulation in one coordinated model. Simulator-only calculated
 values use the `ajrm-marine-simulator` namespace. Separate simulated NMEA 2000

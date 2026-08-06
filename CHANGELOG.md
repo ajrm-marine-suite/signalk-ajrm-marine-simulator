@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.8
+
+- Always place own vessel at the first GPX point when a route is loaded,
+  including while simulator output is already active.
+- Treat a GPX route as the required ground track and calculate a crabbing
+  course-to-steer against simulated current, preventing environmental current
+  from displacing deterministic route playback.
+
 ## 0.7.7
 
 - Normalize the exact duplicated-route sequence produced by the legacy GPX

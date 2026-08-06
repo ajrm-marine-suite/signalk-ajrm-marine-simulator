@@ -602,6 +602,79 @@ test('loaded GPX route starts own boat at first point and steers toward next poi
   }
 })
 
+test('loading a GPX route while output is active still places own boat at its first point', () => {
+  const routes = new Map()
+  const plugin = createPlugin({ setPluginStatus() {}, handleMessage() {} })
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({ own: { initialHeadingDeg: 90, initialSpeedKn: 5 } })
+    invoke(routes, 'POST', '/output', { enabled: true })
+    const state = invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Active output route',
+      points: [
+        { latitude: 56.3, longitude: -5.7 },
+        { latitude: 56.31, longitude: -5.7 }
+      ]
+    })
+    assert.equal(state.outputEnabled, true)
+    assert.equal(state.own.latitude, 56.3)
+    assert.equal(state.own.longitude, -5.7)
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('GPX route mode compensates for cross-current and remains on the route ground track', () => {
+  const routes = new Map()
+  const realDateNow = Date.now
+  const realSetInterval = global.setInterval
+  const realClearInterval = global.clearInterval
+  let now = Date.parse('2026-08-06T12:00:00.000Z')
+  let tick = null
+  Date.now = () => now
+  global.setInterval = (handler) => {
+    tick = handler
+    return 1
+  }
+  global.clearInterval = () => {}
+  let plugin
+  try {
+    plugin = createPlugin({ setPluginStatus() {}, handleMessage() {} })
+    plugin.registerWithRouter(routerMap(routes))
+    plugin.start({
+      outputPeriod: 0.2,
+      own: { initialHeadingDeg: 0, initialSpeedKn: 5 },
+      environment: {
+        currentDriftKn: 3,
+        currentSetDeg: 90,
+        currentVarying: false
+      }
+    })
+    invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Northbound cross-current route',
+      points: [
+        { latitude: 56.3, longitude: -5.7 },
+        { latitude: 56.31, longitude: -5.7 }
+      ]
+    })
+    invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
+    invoke(routes, 'POST', '/output', { enabled: true })
+    for (let index = 0; index < 50; index += 1) {
+      now += 200
+      tick()
+    }
+    const state = invoke(routes, 'GET', '/state')
+    assert.ok(state.own.latitude > 56.3001)
+    assert.ok(Math.abs(state.own.longitude + 5.7) < 0.000001)
+    assert.ok(state.own.headingDeg > 300)
+  } finally {
+    plugin?.stop()
+    Date.now = realDateNow
+    global.setInterval = realSetInterval
+    global.clearInterval = realClearInterval
+  }
+})
+
 test('GPX route following does not bounce around waypoints at high speed', async () => {
   const routes = new Map()
   const realDateNow = Date.now
