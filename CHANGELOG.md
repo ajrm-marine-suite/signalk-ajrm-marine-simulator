@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.9
+
+- Correct the Raspberry Pi installation command to the current GPX route
+  simulator release.
+
 ## 0.7.8
 
 - Always place own vessel at the first GPX point when a route is loaded,
