@@ -1,0 +1,64 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AJRM Marine Simulator API",
+    "version": "0.8.0",
+    "description": "Read simulator state and control isolated home-test simulation."
+  },
+  "servers": [{ "url": "/plugins/signalk-ajrm-marine-simulator" }],
+  "paths": {
+    "/state": { "get": { "summary": "Get simulator state", "responses": { "200": { "$ref": "#/components/responses/Ok" } } } },
+    "/output": { "$ref": "#/components/pathItems/Write" },
+    "/own/controls": { "$ref": "#/components/pathItems/Write" },
+    "/own/reset": { "$ref": "#/components/pathItems/Write" },
+    "/own/start-position": { "$ref": "#/components/pathItems/Write" },
+    "/own/gpx-route": { "$ref": "#/components/pathItems/Write" },
+    "/own/gpx-route/clear": { "$ref": "#/components/pathItems/Write" },
+    "/own/gpx-route/options": { "$ref": "#/components/pathItems/Write" },
+    "/own/gpx-route/playback": { "$ref": "#/components/pathItems/Write" },
+    "/own/heading": { "$ref": "#/components/pathItems/Write" },
+    "/own/speed": { "$ref": "#/components/pathItems/Write" },
+    "/own/auto-reverse": { "$ref": "#/components/pathItems/Write" },
+    "/own/motion-mode": { "$ref": "#/components/pathItems/Write" },
+    "/environment": { "$ref": "#/components/pathItems/Write" },
+    "/targets/autopilot": { "$ref": "#/components/pathItems/Write" },
+    "/targets/{id}/control": {
+      "post": {
+        "summary": "Update one simulated target",
+        "security": [{ "signalk": ["readwrite"] }],
+        "parameters": [{ "$ref": "#/components/parameters/TargetId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "signalk": { "type": "http", "scheme": "bearer" } },
+    "parameters": {
+      "TargetId": { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+    },
+    "pathItems": {
+      "Write": {
+        "post": {
+          "summary": "Update simulator controls",
+          "security": [{ "signalk": ["readwrite"] }],
+          "responses": {
+            "200": { "$ref": "#/components/responses/Ok" },
+            "400": { "$ref": "#/components/responses/Error" },
+            "403": { "$ref": "#/components/responses/Forbidden" },
+            "409": { "$ref": "#/components/responses/Error" }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Ok": { "description": "Successful response" },
+      "Forbidden": { "description": "Signal K read/write or administrator access required" },
+      "Error": { "description": "Operation failed" }
+    }
+  }
+}

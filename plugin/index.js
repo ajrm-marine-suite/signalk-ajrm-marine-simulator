@@ -9,8 +9,10 @@
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const { randomUUID } = require('node:crypto')
 
 const packageInfo = require('../package.json')
+const openApi = require('./openapi.json')
 
 const EARTH_RADIUS_M = 6371000
 const KNOTS_TO_MPS = 0.514444
@@ -29,7 +31,7 @@ const DEFAULT_MAGNETIC_VARIATION_DEG = -2.72
 const NMEA_GATEWAY_SOURCE = 'YDEN'
 const MAX_GPX_ROUTE_POINTS = 2000
 const MAX_GPX_SUBSTEPS = 500
-const RUNTIME_SETTINGS_VERSION = 1
+const RUNTIME_SETTINGS_VERSION = 2
 const RUNTIME_SETTINGS_FILE_ENV = 'AJRM_MARINE_SIMULATOR_SETTINGS_FILE'
 const TURN_RATE_PER_RUDDER_DEG_PER_SECOND = 0.08
 const AIS_NAV_STATUS_ACTIVE_SART = 14
@@ -73,6 +75,8 @@ module.exports = function ajrmMarineSimulator(app) {
   let lastTickMs = null
   let startedAtMs = 0
   let startupProps = {}
+  let sessionId = null
+  let statusSequence = 0
 
   plugin.id = 'signalk-ajrm-marine-simulator'
   plugin.name = 'AJRM Marine Simulator'
@@ -80,6 +84,7 @@ module.exports = function ajrmMarineSimulator(app) {
   plugin.version = packageInfo.version
 
   plugin.schema = makeSchema()
+  plugin.getOpenApi = () => openApi
 
   plugin.start = function start(props = {}) {
     plugin.stop()
@@ -88,27 +93,37 @@ module.exports = function ajrmMarineSimulator(app) {
     own = initialOwn(cfg)
     env = initialEnvironment(cfg)
     targets = new Map(initialTargets(cfg).map((target) => [target.id, target]))
+    sessionId = randomUUID()
+    statusSequence = 0
     startedAtMs = Date.now()
     lastTickMs = startedAtMs
     publishSnapshot()
     timer = setInterval(tick, cfg.outputPeriod * 1000)
+    timer.unref?.()
     setStatus()
   }
 
   plugin.stop = function stop() {
+    const wasRunning = cfg != null
+    if (cfg?.outputEnabled) publishQuietSnapshot()
     if (timer) clearInterval(timer)
+    if (wasRunning) publishSimulatorStatus(null)
     timer = null
     cfg = null
     own = null
     env = null
     targets = new Map()
     lastTickMs = null
+    sessionId = null
+    statusSequence = 0
+    if (wasRunning) app.setPluginStatus?.('Stopped')
   }
 
   plugin.registerWithRouter = function registerWithRouter(router) {
+    const post = (route, handler) => router.post(route, requireWriteAccess(handler))
     router.get('/state', (_req, res) => res.json(publicState()))
 
-    router.post('/output', (req, res) => {
+    post('/output', (req, res) => {
       if (!cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const wasEnabled = cfg.outputEnabled
       const nextEnabled = req.body?.enabled === true
@@ -122,7 +137,7 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/own/controls', (req, res) => {
+    post('/own/controls', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       const values = req.body || {}
       updateOwnControls(values)
@@ -131,14 +146,14 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/own/reset', (_req, res) => {
+    post('/own/reset', (_req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       resetSimulatorToDefaults()
       publishSnapshot({ includeStatic: true })
       res.json(publicState())
     })
 
-    router.post('/own/start-position', (req, res) => {
+    post('/own/start-position', (req, res) => {
       if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const next = startPositionFromInput(req.body || {}, own.startPosition || DEFAULT_BASE)
       cfg.own = { ...(cfg.own || {}), startPosition: next }
@@ -153,7 +168,7 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/own/gpx-route', (req, res) => {
+    post('/own/gpx-route', (req, res) => {
       if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const route = gpxRouteFromInput(req.body || {})
       if (!route.points.length) return res.status(400).json({ error: 'GPX route needs at least one valid point' })
@@ -176,7 +191,7 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/own/gpx-route/clear', (_req, res) => {
+    post('/own/gpx-route/clear', (_req, res) => {
       if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
       own.gpxRoute = emptyGpxRoute()
       own.gpxRouteIndex = 0
@@ -186,7 +201,7 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/own/gpx-route/options', (req, res) => {
+    post('/own/gpx-route/options', (req, res) => {
       if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
       if (!own.gpxRoute?.points?.length) return res.status(400).json({ error: 'Load a GPX route before changing route options' })
       own.gpxRoute = { ...own.gpxRoute, autoReverse: req.body?.autoReverse === true }
@@ -194,7 +209,7 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/own/gpx-route/playback', (req, res) => {
+    post('/own/gpx-route/playback', (req, res) => {
       if (!own || !cfg) return res.status(409).json({ error: 'Simulator is not running' })
       const action = String(req.body?.action || '')
       if (!own.gpxRoute?.points?.length) return res.status(400).json({ error: 'Load a GPX route before using route playback' })
@@ -230,8 +245,9 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/own/heading', (req, res) => {
+    post('/own/heading', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
+      if (!['left', 'right'].includes(req.body?.direction)) return res.status(400).json({ error: 'Direction must be left or right' })
       own.motionMode = 'self'
       own.headingDeg = normalizeDeg(own.headingDeg + (req.body?.direction === 'left' ? -5 : 5))
       own.gpxRoute = { ...(own.gpxRoute || emptyGpxRoute()), enabled: false }
@@ -241,8 +257,9 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/own/speed', (req, res) => {
+    post('/own/speed', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
+      if (!['up', 'down'].includes(req.body?.direction)) return res.status(400).json({ error: 'Direction must be up or down' })
       const nextSpeed = clamp(own.speedKn + (req.body?.direction === 'down' ? -1 : 1), 0, MAX_OWN_SPEED_KN, own.speedKn)
       if (own.motionMode === 'route') {
         own.speedKn = nextSpeed
@@ -268,10 +285,9 @@ module.exports = function ajrmMarineSimulator(app) {
       saveRuntimeSettings()
       res.json(publicState())
     }
-    router.post('/own/autopilot', setOwnAutoReverse)
-    router.post('/own/auto-reverse', setOwnAutoReverse)
+    post('/own/auto-reverse', setOwnAutoReverse)
 
-    router.post('/own/motion-mode', (req, res) => {
+    post('/own/motion-mode', (req, res) => {
       if (!own) return res.status(409).json({ error: 'Simulator is not running' })
       const mode = String(req.body?.mode || '')
       if (!['stationary', 'self', 'route'].includes(mode)) return res.status(400).json({ error: 'Unknown own-vessel motion mode' })
@@ -300,7 +316,7 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/environment', (req, res) => {
+    post('/environment', (req, res) => {
       if (!env) return res.status(409).json({ error: 'Simulator is not running' })
       updateEnvironment(req.body || {})
       saveRuntimeSettings()
@@ -308,14 +324,20 @@ module.exports = function ajrmMarineSimulator(app) {
       res.json(publicState())
     })
 
-    router.post('/targets/autopilot', (req, res) => {
+    post('/targets/autopilot', (req, res) => {
       if (!cfg) return res.status(409).json({ error: 'Simulator is not running' })
       cfg.targetAutopilotEnabled = req.body?.enabled === true
       saveRuntimeSettings()
       res.json(publicState())
     })
 
-    router.post('/targets/:id/control', (req, res) => {
+    post('/targets/:id/control', (req, res) => {
+      if (req.body?.speedDirection && !['up', 'down'].includes(req.body.speedDirection)) {
+        return res.status(400).json({ error: 'Speed direction must be up or down' })
+      }
+      if (req.body?.rudderDirection && !['left', 'right'].includes(req.body.rudderDirection)) {
+        return res.status(400).json({ error: 'Rudder direction must be left or right' })
+      }
       const target = updateTarget(req.params.id, req.body || {})
       if (!target) return res.status(404).json({ error: 'Unknown target' })
       saveRuntimeSettings()
@@ -331,10 +353,7 @@ module.exports = function ajrmMarineSimulator(app) {
     const now = Date.now()
     const dt = Math.max(0, Math.min(10, (now - lastTickMs) / 1000))
     lastTickMs = now
-    if (!cfg.outputEnabled) {
-      setStatus()
-      return
-    }
+    if (!cfg.outputEnabled) return
     advanceOwn(dt)
     advanceEnvironment(now)
     for (const target of targets.values()) advanceTarget(target, dt)
@@ -459,33 +478,6 @@ module.exports = function ajrmMarineSimulator(app) {
     return updates
   }
 
-  function ownValues({ includePosition = true } = {}) {
-    const gps = ownGpsValues({ includePosition })
-    const gpsUnavailable = ownGpsUnavailable()
-    const stationary = ownMotionMode() === 'stationary'
-    const motion = stationary
-      ? { courseDeg: own.headingDeg, speedOverGroundMps: 0 }
-      : ownGroundMotion()
-    const values = [
-      {
-        path: 'navigation.courseOverGroundTrue',
-        value: gpsUnavailable ? null : degToRad(motion.courseDeg)
-      },
-      {
-        path: 'navigation.speedOverGround',
-        value: gpsUnavailable ? null : motion.speedOverGroundMps
-      },
-      { path: 'navigation.speedThroughWater', value: stationary ? 0 : own.speedKn * KNOTS_TO_MPS },
-      { path: 'navigation.rateOfTurn', value: rawDegToRad(own.rateOfTurnDegPerSecond || 0) },
-      { path: 'steering.rudderAngle', value: rawDegToRad(own.rudderAngleDeg || 0) },
-      { path: 'navigation.state', value: stationary || own.speedKn <= 0 ? 'stopped' : 'underWay' }
-    ]
-    values.push(...environmentValues({ includeCurrent: !gpsUnavailable }))
-    if (own.headingEnabled !== false) values.splice(1, 0, { path: 'navigation.headingTrue', value: degToRad(own.headingDeg) })
-    values.push(...gps)
-    return values
-  }
-
   function environmentValues({ includeCurrent = true } = {}) {
     if (env.enabled === false) {
       return environmentPaths().map((path) => ({ path, value: null }))
@@ -589,7 +581,8 @@ module.exports = function ajrmMarineSimulator(app) {
   }
 
   function quietOwnValues() {
-    const values = [
+    const valuesByPath = new Map(environmentPaths().map((path) => [path, { path, value: null }]))
+    for (const item of [
       { path: 'navigation.courseOverGroundTrue', value: degToRad(own.headingDeg) },
       { path: 'navigation.speedOverGround', value: 0 },
       { path: 'navigation.speedThroughWater', value: 0 },
@@ -602,9 +595,11 @@ module.exports = function ajrmMarineSimulator(app) {
       { path: 'environment.tide.drift', value: 0 },
       { path: 'navigation.gnss.methodQuality', value: 'GNSS fix' },
       { path: 'navigation.position', value: { latitude: own.latitude, longitude: own.longitude } }
-    ]
-    if (own.headingEnabled !== false) values.splice(1, 0, { path: 'navigation.headingTrue', value: degToRad(own.headingDeg) })
-    return values
+    ]) valuesByPath.set(item.path, item)
+    if (own.headingEnabled !== false) {
+      valuesByPath.set('navigation.headingTrue', { path: 'navigation.headingTrue', value: degToRad(own.headingDeg) })
+    }
+    return [...valuesByPath.values()]
   }
 
   function ownGpsUnavailable() {
@@ -636,37 +631,6 @@ module.exports = function ajrmMarineSimulator(app) {
       courseDeg: groundTrackDeg,
       speedOverGroundMps: Math.max(0, motion.speedOverGroundMps * Math.cos(courseDifferenceRad))
     }
-  }
-
-  function ownGpsValues({ includePosition = true } = {}) {
-    const mode = GPS_FAULT_MODES.includes(own.gpsFaultMode) ? own.gpsFaultMode : 'normal'
-    const seconds = (Date.now() - startedAtMs) / 1000
-    const intermittentOff = ownGpsUnavailable()
-    const sats = gnssSatelliteState(mode, seconds)
-    const values = [
-      { path: 'navigation.gnss.methodQuality', value: mode === 'lost' || intermittentOff ? 'no GPS' : 'GNSS fix' },
-      { path: 'navigation.gnss.horizontalDilution', value: sats.hdop },
-      { path: 'navigation.gnss.verticalDilution', value: sats.vdop },
-      { path: 'navigation.gnss.positionDilution', value: sats.pdop },
-      { path: 'navigation.gnss.satellites', value: sats.used },
-      { path: 'navigation.gnss.satellitesInView', value: sats.inView },
-      { path: 'navigation.gnss.signalStrength', value: sats.signalStrength },
-      { path: 'navigation.gnss.constellations', value: sats.constellations }
-    ]
-    if (!includePosition) return values
-    if (mode === 'lost' || intermittentOff) {
-      values.push({ path: 'navigation.position', value: null })
-      return values
-    }
-    let position = { latitude: own.latitude, longitude: own.longitude }
-    if (mode === 'jump') {
-      position = offsetMeters(position.latitude, position.longitude, 500, 500)
-    } else if (mode === 'spoof') {
-      own.gpsSpoofOffsetM += cfg.outputPeriod * 1.5
-      position = offsetMeters(position.latitude, position.longitude, own.gpsSpoofOffsetM, own.gpsSpoofOffsetM)
-    }
-    values.push({ path: 'navigation.position', value: position })
-    return values
   }
 
   function ownGpsState() {
@@ -787,27 +751,6 @@ module.exports = function ajrmMarineSimulator(app) {
       ]
     })
     return true
-  }
-
-  function targetStaticValues(target) {
-    const rootValue = {}
-    if (target.name) rootValue.name = transmittedName(target)
-    if (target.callsign) rootValue.communication = { callsignVhf: target.callsign }
-    const imo = canonicalImo(target.imo)
-    if (imo) rootValue.registrations = { imo }
-    const values = [
-      { path: 'design.aisShipType', value: { id: target.aisShipType, name: AIS_TYPES[target.aisShipType] || 'Unknown' } },
-      { path: 'design.length', value: { overall: target.length } },
-      { path: 'design.beam', value: target.width },
-      { path: 'design.draft', value: { current: target.draft } },
-      { path: 'sensors.ais.fromBow', value: target.aisFromBow },
-      { path: 'sensors.ais.fromCenter', value: target.aisFromCenter },
-      { path: 'sensors.ais.class', value: target.aisClass }
-    ]
-    if (Object.keys(rootValue).length > 0) values.push({ path: '', value: rootValue })
-    if (target.destination) values.push({ path: 'navigation.destination.commonName', value: target.destination })
-    if (target.eta) values.push({ path: 'navigation.destination.eta', value: target.eta })
-    return values
   }
 
   function targetDynamicValues(target) {
@@ -1057,13 +1000,21 @@ module.exports = function ajrmMarineSimulator(app) {
     }
     const numericFields = {
       depthM: [0, 250],
+      transducerToKeelM: [-20, 20],
       apparentWindSpeedKn: [0, 80],
       apparentWindAngleDeg: [-180, 180],
       currentDriftKn: [0, 8],
       currentSetDeg: [0, 360],
       waterTemperatureC: [-2, 40],
       engineRoomTemperatureC: [-10, 120],
-      exhaustWaterTemperatureC: [-10, 120]
+      exhaustWaterTemperatureC: [-10, 120],
+      batteryVoltage: [9, 16],
+      batteryCurrent: [-200, 200],
+      depthVariationM: [0, 50],
+      windVariationKn: [0, 40],
+      windShiftDeg: [0, 90],
+      currentVariationKn: [0, 5],
+      currentShiftDeg: [0, 180]
     }
     for (const [key, limits] of Object.entries(numericFields)) {
       if (values[key] != null) env[key] = clamp(values[key], limits[0], limits[1], env[key])
@@ -1072,27 +1023,27 @@ module.exports = function ajrmMarineSimulator(app) {
       if (values[key] != null) env[key] = values[key] === true
     }
     if (values.enabled != null) env.enabled = values.enabled === true
-    if (values.depthM != null || values.depthVarying != null) {
+    if (values.depthM != null || values.depthVarying != null || values.depthVariationM != null) {
       env.baseDepthM = env.depthVarying
         ? env.depthM - phase.depth * env.depthVariationM
         : env.depthM
     }
-    if (values.apparentWindSpeedKn != null || values.windVarying != null) {
+    if (values.apparentWindSpeedKn != null || values.windVarying != null || values.windVariationKn != null) {
       env.baseApparentWindSpeedKn = env.windVarying
         ? env.apparentWindSpeedKn - phase.windSpeed * env.windVariationKn
         : env.apparentWindSpeedKn
     }
-    if (values.apparentWindAngleDeg != null || values.windVarying != null) {
+    if (values.apparentWindAngleDeg != null || values.windVarying != null || values.windShiftDeg != null) {
       env.baseApparentWindAngleDeg = env.windVarying
         ? env.apparentWindAngleDeg - phase.windAngle * env.windShiftDeg
         : env.apparentWindAngleDeg
     }
-    if (values.currentDriftKn != null || values.currentVarying != null) {
+    if (values.currentDriftKn != null || values.currentVarying != null || values.currentVariationKn != null) {
       env.baseCurrentDriftKn = env.currentVarying
         ? env.currentDriftKn - phase.currentDrift * env.currentVariationKn
         : env.currentDriftKn
     }
-    if (values.currentSetDeg != null || values.currentVarying != null) {
+    if (values.currentSetDeg != null || values.currentVarying != null || values.currentShiftDeg != null) {
       env.baseCurrentSetDeg = env.currentVarying
         ? normalizeDeg(env.currentSetDeg - phase.currentSet * env.currentShiftDeg)
         : env.currentSetDeg
@@ -1158,6 +1109,7 @@ module.exports = function ajrmMarineSimulator(app) {
       environment: env ? {
         enabled: env.enabled !== false,
         depthM: round(env.depthM, 1),
+        transducerToKeelM: round(env.transducerToKeelM, 1),
         depthBelowKeelM: round(Math.max(0, env.depthM + env.transducerToKeelM), 1),
         apparentWindSpeedKn: round(env.apparentWindSpeedKn, 1),
         apparentWindAngleDeg: round(env.apparentWindAngleDeg, 0),
@@ -1169,8 +1121,13 @@ module.exports = function ajrmMarineSimulator(app) {
         batteryVoltage: round(env.batteryVoltage, 1),
         batteryCurrent: round(env.batteryCurrent, 1),
         depthVarying: env.depthVarying,
+        depthVariationM: round(env.depthVariationM, 1),
         windVarying: env.windVarying,
-        currentVarying: env.currentVarying
+        windVariationKn: round(env.windVariationKn, 1),
+        windShiftDeg: round(env.windShiftDeg, 0),
+        currentVarying: env.currentVarying,
+        currentVariationKn: round(env.currentVariationKn, 1),
+        currentShiftDeg: round(env.currentShiftDeg, 0)
       } : null,
       targets: [...targets.values()].map((target) => ({
         id: target.id,
@@ -1194,10 +1151,39 @@ module.exports = function ajrmMarineSimulator(app) {
   function setStatus() {
     if (!cfg?.outputEnabled) {
       app.setPluginStatus?.(`v${packageInfo.version} - all simulation output OFF`)
-      return
+    } else {
+      const activeTargets = [...targets.values()].filter((target) => target.enabled).length
+      app.setPluginStatus?.(`v${packageInfo.version} - own boat + ${activeTargets} AIS targets/stations`)
     }
-    const activeTargets = [...targets.values()].filter((target) => target.enabled).length
-    app.setPluginStatus?.(`v${packageInfo.version} - own boat + ${activeTargets} AIS targets/stations`)
+    publishSimulatorStatus({
+      contract: 'ajrm-marine-simulator-status',
+      contractVersion: 1,
+      sessionId,
+      sequence: ++statusSequence,
+      updatedAt: new Date().toISOString(),
+      ...publicState()
+    })
+  }
+
+  function publishSimulatorStatus(value) {
+    app.handleMessage?.(plugin.id, {
+      context: 'vessels.self',
+      updates: [{
+        source: { label: plugin.id },
+        values: [{ path: 'plugins.ajrmMarineSimulator', value }]
+      }]
+    })
+  }
+
+  function requireWriteAccess(handler) {
+    return function writeAccessHandler(req, res) {
+      const permission = req.skPrincipal?.permissions
+      if (permission === 'admin' || permission === 'readwrite' ||
+          (permission === undefined && req.skIsAuthenticated !== false)) {
+        return handler(req, res)
+      }
+      return res.status(403).json({ error: 'Signal K read/write or administrator access required' })
+    }
   }
 
   function ownMotionMode() {
@@ -1353,6 +1339,7 @@ module.exports = function ajrmMarineSimulator(app) {
       environment: {
         enabled: env.enabled !== false,
         depthM: round(env.depthM, 1),
+        transducerToKeelM: round(env.transducerToKeelM, 1),
         apparentWindSpeedKn: round(env.apparentWindSpeedKn, 1),
         apparentWindAngleDeg: round(env.apparentWindAngleDeg, 0),
         currentDriftKn: round(env.currentDriftKn, 1),
@@ -1360,9 +1347,16 @@ module.exports = function ajrmMarineSimulator(app) {
         waterTemperatureC: round(env.waterTemperatureC, 1),
         engineRoomTemperatureC: round(env.engineRoomTemperatureC, 1),
         exhaustWaterTemperatureC: round(env.exhaustWaterTemperatureC, 1),
+        batteryVoltage: round(env.batteryVoltage, 1),
+        batteryCurrent: round(env.batteryCurrent, 1),
         depthVarying: env.depthVarying,
+        depthVariationM: round(env.depthVariationM, 1),
         windVarying: env.windVarying,
-        currentVarying: env.currentVarying
+        windVariationKn: round(env.windVariationKn, 1),
+        windShiftDeg: round(env.windShiftDeg, 0),
+        currentVarying: env.currentVarying,
+        currentVariationKn: round(env.currentVariationKn, 1),
+        currentShiftDeg: round(env.currentShiftDeg, 0)
       },
       targets: movingTargets,
       fixedStations
@@ -1392,9 +1386,7 @@ module.exports = function ajrmMarineSimulator(app) {
       gpsFaultMode: GPS_FAULT_MODES.includes(ownConfig.gpsFaultMode) ? ownConfig.gpsFaultMode : 'normal',
       gpsSpoofOffsetM: 0,
       gpxRoute,
-      gpxRouteIndex: gpxRoute.normalization
-        ? (gpxRoute.points.length > 1 ? 1 : 0)
-        : clampInteger(ownConfig.gpxRouteIndex, 0, Math.max(0, gpxRoute.points.length - 1), gpxRoute.points.length > 1 ? 1 : 0)
+      gpxRouteIndex: clampInteger(ownConfig.gpxRouteIndex, 0, Math.max(0, gpxRoute.points.length - 1), gpxRoute.points.length > 1 ? 1 : 0)
     }
   }
 
@@ -1419,7 +1411,6 @@ module.exports = function ajrmMarineSimulator(app) {
       playState: 'stopped',
       autoReverse: false,
       direction: 'forward',
-      normalization: null,
       arrivalRadiusM: DEFAULT_GPX_ARRIVAL_RADIUS_M
     }
   }
@@ -1431,39 +1422,17 @@ module.exports = function ajrmMarineSimulator(app) {
         .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))
         .slice(0, MAX_GPX_ROUTE_POINTS)
       : []
-    const normalized = normalizeGpxRoutePoints(importedPoints)
-    const points = normalized.points
-    const correctedLegacyRoute = normalized.normalization != null
+    const points = importedPoints
     return {
       enabled: points.length > 0 && input.enabled !== false,
-      completed: !correctedLegacyRoute && input.completed === true && points.length > 0,
+      completed: input.completed === true && points.length > 0,
       name: String(input.name || '').trim().slice(0, 120),
       points,
-      playState: correctedLegacyRoute
-        ? 'stopped'
-        : gpxPlayState(input.playState, points.length > 0 && input.enabled !== false ? 'playing' : 'stopped'),
+      playState: gpxPlayState(input.playState, points.length > 0 && input.enabled !== false ? 'playing' : 'stopped'),
       autoReverse: input.autoReverse === true,
-      direction: correctedLegacyRoute ? 'forward' : (input.direction === 'reverse' ? 'reverse' : 'forward'),
-      normalization: normalized.normalization,
+      direction: input.direction === 'reverse' ? 'reverse' : 'forward',
       arrivalRadiusM: clamp(input.arrivalRadiusM, 5, 500, DEFAULT_GPX_ARRIVAL_RADIUS_M)
     }
-  }
-
-  function normalizeGpxRoutePoints(points = []) {
-    if (points.length >= 4 && points.length % 2 === 0) {
-      const half = points.length / 2
-      const repeated = points.slice(0, half).every((point, index) => {
-        const duplicate = points[index + half]
-        return point.latitude === duplicate.latitude && point.longitude === duplicate.longitude
-      })
-      if (repeated) {
-        return {
-          points: points.slice(0, half),
-          normalization: 'legacy-duplicated-sequence-collapsed'
-        }
-      }
-    }
-    return { points, normalization: null }
   }
 
   function publicGpxRoute(route = emptyGpxRoute(), index = 0) {
@@ -1478,7 +1447,6 @@ module.exports = function ajrmMarineSimulator(app) {
       playState: gpxPlayState(route.playState, route.enabled === true ? 'playing' : 'stopped'),
       autoReverse: route.autoReverse === true,
       direction: route.direction === 'reverse' ? 'reverse' : 'forward',
-      normalization: route.normalization || null,
       arrivalRadiusM: route.arrivalRadiusM || DEFAULT_GPX_ARRIVAL_RADIUS_M,
       nextPoint: points[safeIndex]
         ? {

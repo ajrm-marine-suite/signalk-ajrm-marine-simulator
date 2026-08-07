@@ -1,14 +1,15 @@
 # AJRM Marine Simulator
 
-> **Alpha Release disclaimer:** This software is Alpha Release and must not be
+> **Public Beta disclaimer:** This software is a public beta and must not be
 > relied upon for navigation or safety.
 
 Unified Signal K simulator for AJRM Marine Suite testing.
 
-Version `0.7.8` places own vessel on the first GPX point whenever a route is
-loaded and follows each route leg as a deterministic ground track. Simulated
-current remains published and the vessel's heading crabs into it, but the
-current no longer pushes route playback away from the displayed GPX line.
+Version `0.8.0` is the reviewed Signal K baseline. It protects every control
+route with Signal K write access, documents the HTTP API with OpenAPI, and
+publishes a retained `plugins.ajrmMarineSimulator` lifecycle contract for
+Console/BITE. Stopping the plugin now emits a final quiet snapshot and retracts
+the lifecycle projection.
 
 This plugin combines own-vessel, environment, GNSS, fixed-station, and moving
 AIS target simulation in one coordinated model. Simulator-only calculated
@@ -73,34 +74,12 @@ Leave output off when sailing for real.
 
 ## DR Testing
 
-Version `0.1.10` pauses internal own-boat, environment, and target movement
-while **Run simulator** is off. After a Signal K restart the simulator
-therefore remains at the active configured/default start position until output
-is deliberately enabled.
-
-Version `0.5.10` adds GPX route loading to the simulator web UI. Loading a GPX
-file places own boat at the first GPX point while output is off, then steers
-toward the following points when simulator output is running. It also reduces
-web-page state polling noise.
-
-Version `0.5.9` enables the simulator plugin by default after install while
-keeping the master output switch off. It also exposes own boat start position
-in the web UI, so tests can start from a chosen berth without editing plugin
-configuration.
-
-Version `0.5.3` remembers simulator web-control settings across Signal K
-restarts. **Reset defaults** clears those saved runtime settings and restores
-the configured/default own boat, environment, and AIS target controls.
-
-Version `0.5.4` publishes a final quiet sample when simulator output is stopped:
-own-vessel SOG/STW and current/tide drift go to zero, and simulated AIS target
-positions are cleared. This prevents Capture, Traffic, and Display from
-reacting to stale simulator movement after a test run ends.
-
-Version `0.5.26` treats own-vessel GPS loss as loss of GPS-derived position,
-SOG, COG, and GPS-derived current/tide set and drift. It still publishes
-heading, STW, wind, and depth so DR Plotter can test dead reckoning using the
-last trusted current vector rather than a pretend live tide measurement.
+While **Run simulator** is off, own-boat, environment, and target movement is
+paused. GPX route loading places own boat at the first point and route playback
+follows the displayed ground track while heading crabs into simulated current.
+The final quiet sample sets movement to zero, clears simulated environmental
+measurements and removes target positions so downstream plugins do not retain
+stale test data.
 
 Use Own GPS mode:
 
@@ -116,11 +95,16 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.7.9 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.8.0 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 
 Disable the old self-track and vessel simulators before enabling this one.
+
+The v0.8.0 runtime-settings format deliberately drops the obsolete duplicated
+GPX-route repair. Settings saved by older versions are ignored once; configure
+or adjust a control to write a clean v2 settings file. Re-import an original
+GPX file rather than relying on a route produced by the retired importer.
 
 
 ## Public Beta

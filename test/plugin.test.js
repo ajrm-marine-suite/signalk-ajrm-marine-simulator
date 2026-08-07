@@ -134,7 +134,7 @@ test('plugin publishes nothing while master output is off, then publishes own an
     }
   })
   plugin.start({ outputEnabled: false })
-  assert.equal(messages.length, 0)
+  assert.equal(messages.filter((message) => message.id === 'YDEN').length, 0)
 
   const state = invoke(routes, 'POST', '/output', { enabled: true })
   assert.equal(state.outputEnabled, true)
@@ -178,6 +178,9 @@ test('turning master output off publishes a final quiet sample', () => {
     assert.equal(ownValues['navigation.speedThroughWater'], 0)
     assert.equal(ownValues['environment.current.drift'], 0)
     assert.equal(ownValues['environment.tide.drift'], 0)
+    assert.equal(ownValues['environment.depth.belowTransducer'], null)
+    assert.equal(ownValues['environment.wind.speedApparent'], null)
+    assert.equal(ownValues['electrical.batteries.house.voltage'], null)
     assert.equal(ownValues['navigation.state'], 'stopped')
 
     const targetValues = latestValuesByPath(messages, '235900999')
@@ -187,6 +190,66 @@ test('turning master output off publishes a final quiet sample', () => {
   } finally {
     plugin.stop()
   }
+})
+
+test('publishes a retained Simulator status contract and retracts it on stop', () => {
+  const messages = []
+  const routes = new Map()
+  const plugin = createPlugin({
+    setPluginStatus() {},
+    handleMessage(id, delta) { messages.push({ id, delta }) }
+  })
+  plugin.registerWithRouter(routerMap(routes))
+
+  plugin.start({})
+  const started = messages.find((message) => message.id === plugin.id)
+  const projection = valuesByPath(started.delta)['plugins.ajrmMarineSimulator']
+  assert.equal(projection.contract, 'ajrm-marine-simulator-status')
+  assert.equal(projection.contractVersion, 1)
+  assert.equal(projection.outputEnabled, false)
+  assert.ok(projection.sessionId)
+  assert.equal(projection.sequence, 1)
+
+  invoke(routes, 'POST', '/output', { enabled: true })
+  const enabled = messages.filter((message) => message.id === plugin.id).at(-1)
+  assert.equal(valuesByPath(enabled.delta)['plugins.ajrmMarineSimulator'].outputEnabled, true)
+
+  plugin.stop()
+  const stopped = messages.filter((message) => message.id === plugin.id).at(-1)
+  assert.equal(valuesByPath(stopped.delta)['plugins.ajrmMarineSimulator'], null)
+})
+
+test('write routes require authenticated Signal K read/write access', () => {
+  const routes = new Map()
+  const plugin = createPlugin({ setPluginStatus() {}, handleMessage() {} })
+  plugin.registerWithRouter(routerMap(routes))
+  try {
+    plugin.start({})
+    const denied = invokeWithParams(routes, 'POST', '/output', { enabled: true }, {}, {
+      skIsAuthenticated: false,
+      skPrincipal: { permissions: 'readonly' }
+    })
+    assert.match(denied.error, /read\/write or administrator/)
+    assert.equal(invoke(routes, 'GET', '/state').outputEnabled, false)
+  } finally {
+    plugin.stop()
+  }
+})
+
+test('OpenAPI paths match the registered HTTP API', () => {
+  const routes = new Map()
+  const plugin = createPlugin({ setPluginStatus() {}, handleMessage() {} })
+  plugin.registerWithRouter(routerMap(routes))
+  const registered = [...routes.keys()].map((entry) => entry
+    .replace(/^(GET|POST) /, '$1 ')
+    .replace('/:id', '/{id}'))
+  const documented = Object.entries(plugin.getOpenApi().paths).flatMap(([route, pathItem]) => {
+    const resolved = pathItem.$ref
+      ? plugin.getOpenApi().components.pathItems[pathItem.$ref.split('/').at(-1)]
+      : pathItem
+    return ['get', 'post'].filter((method) => resolved[method]).map((method) => `${method.toUpperCase()} ${route}`)
+  })
+  assert.deepEqual(registered.sort(), documented.sort())
 })
 
 test('plugin schema exposes editable AIS target and fixed station fleets', () => {
@@ -347,8 +410,9 @@ test('output follows representative live YDEN NMEA 2000 update shapes', () => {
     })
     invoke(routes, 'POST', '/output', { enabled: true })
 
-    const ownDelta = messages.find((message) => message.delta.context === 'vessels.self').delta
-    assert.equal(messages.find((message) => message.delta.context === 'vessels.self').id, 'YDEN')
+    const ownMessage = messages.find((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self')
+    const ownDelta = ownMessage.delta
+    assert.equal(ownMessage.id, 'YDEN')
     const byPgn = new Map(ownDelta.updates.map((update) => [update.source?.pgn, update]))
     assert.deepEqual(byPgn.get(128259).values.map((item) => item.path), [
       'navigation.speedThroughWater',
@@ -400,7 +464,7 @@ test('GPX route mode publishes the live course projection PGN shape', () => {
     })
     invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
     invoke(routes, 'POST', '/output', { enabled: true })
-    const ownDelta = messages.filter((message) => message.delta.context === 'vessels.self').at(-1).delta
+    const ownDelta = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1).delta
     const route = ownDelta.updates.find((update) => update.source?.pgn === 129284)
     assert.ok(route)
     assert.deepEqual(route.values.map((item) => item.path), [
@@ -454,7 +518,7 @@ test('saved enabled config still starts with simulator output off', () => {
     plugin.start({ outputEnabled: true })
     const state = invoke(routes, 'GET', '/state')
     assert.equal(state.outputEnabled, false)
-    assert.equal(messages.length, 0)
+    assert.equal(messages.filter((message) => message.id === 'YDEN').length, 0)
   } finally {
     plugin.stop()
   }
@@ -797,73 +861,6 @@ test('GPX route auto reverse continuously traverses both directions for soak tes
   }
 })
 
-test('legacy GPX routes containing two identical point sequences are normalized before auto reverse', () => {
-  const routes = new Map()
-  const app = { setPluginStatus() {}, handleMessage() {} }
-  const plugin = createPlugin(app)
-  plugin.registerWithRouter(routerMap(routes))
-  try {
-    plugin.start({})
-    const sequence = [
-      { latitude: 56.300000, longitude: -5.700000 },
-      { latitude: 56.301000, longitude: -5.700000 },
-      { latitude: 56.302000, longitude: -5.700000 }
-    ]
-    const state = invoke(routes, 'POST', '/own/gpx-route', {
-      name: 'Legacy duplicated route',
-      autoReverse: true,
-      points: [...sequence, ...sequence]
-    })
-
-    assert.equal(state.own.gpxRoute.pointCount, 3)
-    assert.equal(state.own.gpxRoute.index, 1)
-    assert.equal(state.own.gpxRoute.autoReverse, true)
-    assert.equal(state.own.gpxRoute.normalization, 'legacy-duplicated-sequence-collapsed')
-    assert.deepEqual(state.own.gpxRoute.nextPoint, sequence[1])
-  } finally {
-    plugin.stop()
-  }
-})
-
-test('a legacy duplicated GPX route is normalized when restored from runtime settings', () => {
-  const routes = new Map()
-  const app = { setPluginStatus() {}, handleMessage() {} }
-  const plugin = createPlugin(app)
-  plugin.registerWithRouter(routerMap(routes))
-  const sequence = [
-    { latitude: 56.300000, longitude: -5.700000 },
-    { latitude: 56.301000, longitude: -5.700000 },
-    { latitude: 56.302000, longitude: -5.700000 }
-  ]
-  fs.writeFileSync(runtimeSettingsFile, JSON.stringify({
-    version: 1,
-    own: {
-      motionMode: 'route',
-      gpxRouteIndex: 5,
-      gpxRoute: {
-        enabled: true,
-        name: 'Persisted legacy route',
-        playState: 'playing',
-        autoReverse: true,
-        direction: 'reverse',
-        points: [...sequence, ...sequence]
-      }
-    }
-  }))
-
-  try {
-    plugin.start({})
-    const state = invoke(routes, 'GET', '/state')
-    assert.equal(state.own.gpxRoute.pointCount, 3)
-    assert.equal(state.own.gpxRoute.index, 1)
-    assert.equal(state.own.gpxRoute.direction, 'forward')
-    assert.equal(state.own.gpxRoute.playState, 'stopped')
-    assert.equal(state.own.gpxRoute.normalization, 'legacy-duplicated-sequence-collapsed')
-  } finally {
-    plugin.stop()
-  }
-})
-
 test('own boat speed controls allow high-speed testing up to 999 knots', () => {
   const routes = new Map()
   const app = {
@@ -1087,11 +1084,19 @@ test('web control settings survive plugin restart while simulator output stays o
       latitude: 56.222222,
       longitude: -5.555555
     })
-    invoke(routes, 'POST', '/own/autopilot', { enabled: true })
+    invoke(routes, 'POST', '/own/auto-reverse', { enabled: true })
     invoke(routes, 'POST', '/environment', {
       currentDriftKn: 2.4,
       currentSetDeg: 112,
-      windVarying: false
+      windVarying: false,
+      transducerToKeelM: -1.4,
+      batteryVoltage: 13.2,
+      batteryCurrent: -5.5,
+      depthVariationM: 3.5,
+      windVariationKn: 2.5,
+      windShiftDeg: 18,
+      currentVariationKn: 0.8,
+      currentShiftDeg: 25
     })
     invoke(routes, 'POST', '/targets/:id/control', {
       enabled: false,
@@ -1120,6 +1125,9 @@ test('web control settings survive plugin restart while simulator output stays o
     assert.equal(state.environment.currentDriftKn, 2.4)
     assert.equal(state.environment.currentSetDeg, 112)
     assert.equal(state.environment.windVarying, false)
+    assert.equal(state.environment.transducerToKeelM, -1.4)
+    assert.equal(state.environment.batteryVoltage, 13.2)
+    assert.equal(state.environment.batteryCurrent, -5.5)
     assert.equal(target.enabled, false)
     assert.equal(target.autopilotEnabled, false)
     assert.equal(target.speedKn, 6.4)
@@ -1212,7 +1220,7 @@ test('own GPS lost publishes null GPS-derived navigation and current values', ()
   plugin.start()
   invoke(routes, 'POST', '/output', { enabled: true })
   invoke(routes, 'POST', '/own/controls', { gpsFaultMode: 'lost' })
-  const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
+  const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
   const byPath = valuesByPath(self.delta)
   assert.equal(byPath['navigation.position'], null)
   assert.equal(byPath['navigation.speedOverGround'], null)
@@ -1243,7 +1251,7 @@ test('rapid own controls do not publish extra position samples', () => {
     messages.length = 0
 
     invoke(routes, 'POST', '/own/speed', { direction: 'up' })
-    const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
+    const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
     const byPath = valuesByPath(self.delta)
     assert.ok(byPath['navigation.speedThroughWater'] > 0)
     assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.position'), false)
@@ -1269,7 +1277,7 @@ test('own output publishes crabbing heading separately from COG', () => {
       environment: { currentSetDeg: 90, currentDriftKn: 1, currentVarying: false }
     })
     invoke(routes, 'POST', '/output', { enabled: true })
-    const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
+    const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
     const byPath = valuesByPath(self.delta)
     assert.ok(byPath['navigation.headingMagnetic'] > 0)
     assert.ok(byPath['navigation.courseOverGroundTrue'] > 0.19)
@@ -1298,7 +1306,7 @@ test('disabled environment clears simulated environment values and removes curre
     })
     invoke(routes, 'POST', '/environment', { enabled: false })
     invoke(routes, 'POST', '/output', { enabled: true })
-    const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
+    const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
     const byPath = valuesByPath(self.delta)
     assert.equal(byPath['environment.depth.belowTransducer'], null)
     assert.equal(byPath['environment.wind.speedApparent'], null)
@@ -1334,7 +1342,7 @@ test('manual depth edit remains stable while depth variation is enabled', async 
     invoke(routes, 'POST', '/environment', { depthM: 5.8 })
     await new Promise((resolve) => setTimeout(resolve, 260))
 
-    const ownMessages = messages.filter((message) => message.delta.context === 'vessels.self')
+    const ownMessages = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self')
     const depthValues = ownMessages
       .map((message) => Object.fromEntries(
         Object.entries(valuesByPath(message.delta))
@@ -1367,7 +1375,7 @@ test('own heading output can be disabled while COG remains available', () => {
     })
     invoke(routes, 'POST', '/output', { enabled: true })
     invoke(routes, 'POST', '/own/controls', { headingEnabled: false })
-    const self = messages.filter((message) => message.delta.context === 'vessels.self').at(-1)
+    const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
     const byPath = valuesByPath(self.delta)
     assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.headingMagnetic'), false)
     assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.courseOverGroundTrue'), true)
@@ -1516,13 +1524,13 @@ function invoke(routes, method, path, body = {}, params = {}) {
   return invokeWithParams(routes, method, path, body, params)
 }
 
-function invokeWithParams(routes, method, path, body = {}, params = {}) {
+function invokeWithParams(routes, method, path, body = {}, params = {}, request = {}) {
   let payload
   const response = {
     status() { return response },
     json(value) { payload = value }
   }
-  routes.get(`${method} ${path}`)({ body, params }, response)
+  routes.get(`${method} ${path}`)({ ...request, body, params }, response)
   return payload
 }
 
@@ -1543,7 +1551,7 @@ function delay(ms) {
 
 function latestValuesByPath(messages, mmsi) {
   const message = messages
-    .filter((entry) => String(entry.delta.context).includes(mmsi))
+    .filter((entry) => entry.id === 'YDEN' && String(entry.delta.context).includes(mmsi))
     .at(-1)
   assert.ok(message, `expected message for ${mmsi}`)
   return valuesByPath(message.delta)

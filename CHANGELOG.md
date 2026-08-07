@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.0
+
+- Add Signal K authentication to every state-changing HTTP route and publish a
+  complete OpenAPI 3.1 description of the registered API.
+- Publish and retract the retained `plugins.ajrmMarineSimulator` lifecycle
+  contract used by Console/BITE to verify that simulation output is off.
+- Emit a final quiet snapshot when the plugin stops, including clearing stale
+  simulated environmental measurements and target positions.
+- Persist all editable environment, battery, transducer-offset and variation
+  settings across restarts.
+- Validate direction controls instead of silently interpreting unknown values.
+- Remove the obsolete `/own/autopilot` alias, duplicated-GPX repair, and unused
+  legacy value-building functions; v1 runtime settings are intentionally reset.
+
 ## 0.7.9
 
 - Correct the Raspberry Pi installation command to the current GPX route

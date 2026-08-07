@@ -727,10 +727,7 @@
           : route.direction === "reverse"
             ? `${playState}, returning`
             : playState;
-        const corrected = route.normalization === "legacy-duplicated-sequence-collapsed"
-          ? " · corrected legacy duplicate"
-          : "";
-        els.gpxStatus.textContent = `${route.pointCount} points · waypoint ${Math.min(route.index + 1, route.pointCount)} of ${route.pointCount} · ${active}${corrected}`;
+        els.gpxStatus.textContent = `${route.pointCount} points · waypoint ${Math.min(route.index + 1, route.pointCount)} of ${route.pointCount} · ${active}`;
       }
 
       function renderEnvironment(env) {
