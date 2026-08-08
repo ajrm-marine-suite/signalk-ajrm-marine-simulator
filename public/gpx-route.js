@@ -1,3 +1,7 @@
+/**
+ * Defines API routes and access helpers for GPX in the AJRM Marine Simulator browser application.
+ */
+
 (function initialiseGpxRouteHelpers(root, factory) {
   const api = factory()
   if (typeof module === 'object' && module.exports) module.exports = api

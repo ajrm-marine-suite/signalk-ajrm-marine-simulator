@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AJRM Marine Simulator API",
-    "version": "0.8.0",
+    "version": "0.8.2",
     "description": "Read simulator state and control isolated home-test simulation."
   },
   "servers": [{ "url": "/plugins/signalk-ajrm-marine-simulator" }],
