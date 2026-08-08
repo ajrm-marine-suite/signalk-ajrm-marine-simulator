@@ -29,6 +29,7 @@ const DEFAULT_ROUTE_RUDDER_DEG = 30
 const DEFAULT_GPX_ARRIVAL_RADIUS_M = 25
 const DEFAULT_MAGNETIC_VARIATION_DEG = -2.72
 const NMEA_GATEWAY_SOURCE = 'AJRM-SIM-N2K'
+const AJRM_MARINE_TRAFFIC_API_REGISTRY = Symbol.for('ajrmMarineTrafficApi')
 const MAX_GPX_ROUTE_POINTS = 2000
 const MAX_GPX_SUBSTEPS = 500
 const RUNTIME_SETTINGS_VERSION = 2
@@ -414,7 +415,7 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function ownUpdates({ includePosition = true } = {}) {
     const gpsUnavailable = ownGpsUnavailable()
-    const stationary = ownMotionMode() === 'stationary'
+    const stationary = ownMotionMode() === 'stationary' || anchorHoldActive()
     const motion = stationary
       ? { courseDeg: own.headingDeg, speedOverGroundMps: 0 }
       : ownGroundMotion()
@@ -626,10 +627,17 @@ module.exports = function ajrmMarineSimulator(app) {
       target.longitude
     )
     const courseDifferenceRad = degToRad(motion.courseDeg - groundTrackDeg)
+    const alongTrackMps = motion.speedOverGroundMps * Math.cos(courseDifferenceRad)
+    const crossTrackMps = motion.speedOverGroundMps * Math.sin(courseDifferenceRad)
+    // Preserve deterministic on-line route playback only while the simulated
+    // boat can physically achieve the requested ground track. If current is
+    // stronger than the commanded STW, retain the real ground vector instead
+    // of clamping backwards or sideways motion to a stationary point.
+    if (alongTrackMps <= 0 || Math.abs(crossTrackMps) > 0.01) return motion
     return {
       ...motion,
       courseDeg: groundTrackDeg,
-      speedOverGroundMps: Math.max(0, motion.speedOverGroundMps * Math.cos(courseDifferenceRad))
+      speedOverGroundMps: alongTrackMps
     }
   }
 
@@ -788,7 +796,7 @@ module.exports = function ajrmMarineSimulator(app) {
 
   function advanceOwn(dt) {
     own.rateOfTurnDegPerSecond = 0
-    if (own.motionMode === 'stationary') {
+    if (own.motionMode === 'stationary' || anchorHoldActive()) {
       return
     }
     if (own.motionMode === 'route' && own.gpxRoute?.enabled && own.gpxRoute.points.length > 0) {
@@ -1099,6 +1107,7 @@ module.exports = function ajrmMarineSimulator(app) {
         headingDeg: round(own.headingDeg, 0),
         speedKn: round(own.speedKn, 1),
         motionMode: ownMotionMode(),
+        anchorHoldActive: anchorHoldActive(),
         headingEnabled: own.headingEnabled !== false,
         autopilotEnabled: own.autopilotEnabled,
         routeTurning: own.routeTurning,
@@ -1191,6 +1200,17 @@ module.exports = function ajrmMarineSimulator(app) {
     if (own?.gpxRoute?.enabled && own.gpxRoute.points.length > 0) return 'route'
     if ((own?.speedKn || 0) <= 0) return 'stationary'
     return 'self'
+  }
+
+  function anchorHoldActive() {
+    if (!own || own.speedKn > 0) return false
+    const api = app.ajrmMarineTrafficApi || globalThis[AJRM_MARINE_TRAFFIC_API_REGISTRY]
+    if (typeof api?.status !== 'function') return false
+    try {
+      return String(api.status()?.profiles?.current || '').trim().toLowerCase() === 'anchor'
+    } catch {
+      return false
+    }
   }
 
   function ownMotionModeFromConfig(ownConfig, gpxRoute) {

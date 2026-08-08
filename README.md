@@ -49,6 +49,14 @@ Leave output off when sailing for real.
   the master Run simulator switch. It stops with zero speed at the final point
   by default; the explicit Auto reverse option continuously traverses the route
   in both directions for unattended soak testing.
+- An explicit AJRM Marine Traffic Anchored profile holds the simulated position
+  against tide while commanded STW is zero. A positive speed command permits
+  movement while chain is being paid out.
+- GPX route following holds the route line only while the commanded STW can
+  overcome the simulated current. If that ground track is physically
+  impossible, the boat moves with the resulting ground vector instead of being
+  artificially frozen. **Docked / anchored** also provides a fixed-position
+  simulator-only mode; increasing speed from that mode resumes self steering.
 - Own-vessel auto-reverse heading tests for unattended soak tests.
 - GNSS quality with varying HDOP, VDOP, PDOP, satellites used/in-view, signal
   strength, and GPS/GLONASS/Galileo/BeiDou constellation summaries. The
@@ -95,7 +103,7 @@ These modes are intended to exercise GPS Integrity and DR Plotter.
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.8.2 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-simulator.git#v0.8.3 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

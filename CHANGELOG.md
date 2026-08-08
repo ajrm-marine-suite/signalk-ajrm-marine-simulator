@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.3
+
+- Hold simulated position against tide when Traffic's explicit Anchored profile
+  is active and commanded through-water speed is zero, while allowing a
+  positive speed command to move the boat as chain is paid out.
+- Keep GPX route playback physically mobile when adverse or cross-current is
+  too strong for the commanded through-water speed to hold the route. The
+  simulator now retains the resulting backwards or sideways ground motion
+  instead of clamping it to zero.
+- Clarify that **Docked / anchored** is the explicit fixed-position mode, while
+  increasing speed from that mode resumes self steering.
+
 ## 0.8.2
 
 - Add concise purpose headers to every maintained runtime module so its role is

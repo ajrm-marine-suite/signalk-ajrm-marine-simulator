@@ -739,6 +739,83 @@ test('GPX route mode compensates for cross-current and remains on the route grou
   }
 })
 
+test('anchored route holds at zero STW and moves when commanded despite stronger adverse current', () => {
+  const routes = new Map()
+  const realDateNow = Date.now
+  const realSetInterval = global.setInterval
+  const realClearInterval = global.clearInterval
+  let now = Date.parse('2026-08-08T15:53:00.000Z')
+  let tick = null
+  Date.now = () => now
+  global.setInterval = (handler) => {
+    tick = handler
+    return 1
+  }
+  global.clearInterval = () => {}
+  let trafficProfile = 'anchor'
+  let plugin
+  try {
+    plugin = createPlugin({
+      setPluginStatus() {},
+      handleMessage() {},
+      ajrmMarineTrafficApi: {
+        status() {
+          return { profiles: { current: trafficProfile } }
+        }
+      }
+    })
+    plugin.registerWithRouter(routerMap(routes))
+    plugin.start({
+      outputPeriod: 0.2,
+      own: { initialHeadingDeg: 0, initialSpeedKn: 0 },
+      environment: {
+        currentDriftKn: 2,
+        currentSetDeg: 180,
+        currentVarying: false
+      }
+    })
+    invoke(routes, 'POST', '/own/gpx-route', {
+      name: 'Northbound adverse-current route',
+      points: [
+        { latitude: 56.3, longitude: -5.7 },
+        { latitude: 56.31, longitude: -5.7 }
+      ]
+    })
+    invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
+    invoke(routes, 'POST', '/output', { enabled: true })
+
+    for (let index = 0; index < 10; index += 1) {
+      now += 200
+      tick()
+    }
+    let state = invoke(routes, 'GET', '/state')
+    assert.equal(state.own.latitude, 56.3)
+    assert.equal(state.own.longitude, -5.7)
+    assert.equal(state.own.anchorHoldActive, true)
+
+    state = invoke(routes, 'POST', '/own/speed', { direction: 'up' })
+    assert.equal(state.own.speedKn, 1)
+    assert.equal(state.own.anchorHoldActive, false)
+    for (let index = 0; index < 20; index += 1) {
+      now += 200
+      tick()
+    }
+
+    state = invoke(routes, 'GET', '/state')
+    assert.ok(state.own.latitude < 56.3)
+    assert.ok(Math.abs(state.own.longitude + 5.7) < 0.000001)
+    assert.equal(state.own.speedKn, 1)
+    assert.equal(state.own.gpxRoute.enabled, true)
+    trafficProfile = 'coastal'
+    assert.equal(invoke(routes, 'GET', '/state').own.anchorHoldActive, false)
+  } finally {
+    plugin?.stop()
+    Date.now = realDateNow
+    global.setInterval = realSetInterval
+    global.clearInterval = realClearInterval
+  }
+})
+
 test('GPX route following does not bounce around waypoints at high speed', async () => {
   const routes = new Map()
   const realDateNow = Date.now
