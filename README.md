@@ -14,11 +14,11 @@ the lifecycle projection.
 This plugin combines own-vessel, environment, GNSS, fixed-station, and moving
 AIS target simulation in one coordinated model. Simulator-only calculated
 values use the `ajrm-marine-simulator` namespace. Separate simulated NMEA 2000
-devices and PGN-shaped updates resemble the real YDEN data and intentionally use the
-captured `YDEN` gateway identity (for example compass source `YDEN.4`) so the
-suite's explicitly configured Navigation Reference sources behave as they do
-on the boat. Run the simulator only in the isolated home-test environment, not
-while the real YDEN gateway is connected.
+devices and PGN-shaped updates resemble data from a normal physical gateway.
+They use the unmistakably synthetic `AJRM-SIM-N2K` identity (for example
+compass source `AJRM-SIM-N2K.4`) so tests cannot be mistaken for a particular
+manufacturer's interface. Run the simulator only in an isolated test
+environment, not while real navigation inputs are in operational use.
 
 ## Safety Switch
 
@@ -67,10 +67,10 @@ Leave output off when sailing for real.
 - The AIS target table separates GPS signal fault simulation from vessel-only
   AIS emergency identity modes (Normal, AIS-SART, MOB-AIS, and EPIRB-AIS). The
   emergency identity mode is not applicable to SAR aircraft or base stations.
-- Captured-data-compatible NMEA 2000 grouping for the principal YDEN
+- Representative NMEA 2000 grouping for the principal
   navigation, instrument, GNSS, autopilot, route, AIS Class A, AIS Class B,
-  and AIS base-station PGNs. The simulator intentionally does not reproduce
-  YDEN's high-rate empty updates because they contain no changed values.
+  and AIS base-station PGNs. The simulator intentionally does not publish
+  high-rate empty updates because they contain no changed values.
 
 ## DR Testing
 

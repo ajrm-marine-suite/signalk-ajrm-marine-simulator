@@ -134,7 +134,7 @@ test('plugin publishes nothing while master output is off, then publishes own an
     }
   })
   plugin.start({ outputEnabled: false })
-  assert.equal(messages.filter((message) => message.id === 'YDEN').length, 0)
+  assert.equal(messages.filter((message) => message.id === 'AJRM-SIM-N2K').length, 0)
 
   const state = invoke(routes, 'POST', '/output', { enabled: true })
   assert.equal(state.outputEnabled, true)
@@ -265,7 +265,7 @@ test('plugin schema exposes editable AIS target and fixed station fleets', () =>
   assert.equal(targetDefaults.find((target) => target.id === 'sim-sar-aircraft')?.targetKind, 'sar-aircraft')
   assert.equal(plugin.schema.properties.targets.items.properties.targetKind.title, 'Target category')
   assert.equal(plugin.schema.properties.fixedStations.type, 'array')
-  assert.equal(stationDefaults[0].name, 'Craobh AIS Base')
+  assert.equal(stationDefaults[0].name, 'SIM AIS BASE WEST')
 })
 
 test('default fleet publishes a synthetic SAR aircraft using the AIS SAR aircraft PGN', () => {
@@ -282,7 +282,7 @@ test('default fleet publishes a synthetic SAR aircraft using the AIS SAR aircraf
 
     const sarMessages = messages.filter((message) => message.delta.context.includes('111000599'))
     assert.ok(sarMessages.length > 0)
-    assert.ok(sarMessages.every((message) => message.id === 'YDEN'))
+    assert.ok(sarMessages.every((message) => message.id === 'AJRM-SIM-N2K'))
     const sarUpdate = sarMessages.flatMap((message) => message.delta.updates)
       .find((update) => update.source?.pgn === 129798)
     assert.ok(sarUpdate)
@@ -390,7 +390,7 @@ test('configured AIS target fleet is used at startup', () => {
   }
 })
 
-test('output follows representative live YDEN NMEA 2000 update shapes', () => {
+test('output follows representative live NMEA 2000 update shapes', () => {
   const messages = []
   const routes = new Map()
   const app = {
@@ -410,9 +410,9 @@ test('output follows representative live YDEN NMEA 2000 update shapes', () => {
     })
     invoke(routes, 'POST', '/output', { enabled: true })
 
-    const ownMessage = messages.find((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self')
+    const ownMessage = messages.find((message) => message.id === 'AJRM-SIM-N2K' && message.delta.context === 'vessels.self')
     const ownDelta = ownMessage.delta
-    assert.equal(ownMessage.id, 'YDEN')
+    assert.equal(ownMessage.id, 'AJRM-SIM-N2K')
     const byPgn = new Map(ownDelta.updates.map((update) => [update.source?.pgn, update]))
     assert.deepEqual(byPgn.get(128259).values.map((item) => item.path), [
       'navigation.speedThroughWater',
@@ -424,8 +424,8 @@ test('output follows representative live YDEN NMEA 2000 update shapes', () => {
       'environment.depth.belowKeel'
     ])
     assert.equal(byPgn.get(127250).source.src, '4')
-    assert.equal(byPgn.get(127250).source.label, 'YDEN')
-    assert.equal(byPgn.get(127250).$source, 'YDEN.4')
+    assert.equal(byPgn.get(127250).source.label, 'AJRM-SIM-N2K')
+    assert.equal(byPgn.get(127250).$source, 'AJRM-SIM-N2K.4')
     assert.equal(byPgn.get(127250).values[0].path, 'navigation.headingMagnetic')
     assert.equal(byPgn.get(129025).source.src, '2')
     const satellites = byPgn.get(129540).values[0].value
@@ -464,7 +464,7 @@ test('GPX route mode publishes the live course projection PGN shape', () => {
     })
     invoke(routes, 'POST', '/own/gpx-route/playback', { action: 'play' })
     invoke(routes, 'POST', '/output', { enabled: true })
-    const ownDelta = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1).delta
+    const ownDelta = messages.filter((message) => message.id === 'AJRM-SIM-N2K' && message.delta.context === 'vessels.self').at(-1).delta
     const route = ownDelta.updates.find((update) => update.source?.pgn === 129284)
     assert.ok(route)
     assert.deepEqual(route.values.map((item) => item.path), [
@@ -518,7 +518,7 @@ test('saved enabled config still starts with simulator output off', () => {
     plugin.start({ outputEnabled: true })
     const state = invoke(routes, 'GET', '/state')
     assert.equal(state.outputEnabled, false)
-    assert.equal(messages.filter((message) => message.id === 'YDEN').length, 0)
+    assert.equal(messages.filter((message) => message.id === 'AJRM-SIM-N2K').length, 0)
   } finally {
     plugin.stop()
   }
@@ -1220,7 +1220,7 @@ test('own GPS lost publishes null GPS-derived navigation and current values', ()
   plugin.start()
   invoke(routes, 'POST', '/output', { enabled: true })
   invoke(routes, 'POST', '/own/controls', { gpsFaultMode: 'lost' })
-  const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
+  const self = messages.filter((message) => message.id === 'AJRM-SIM-N2K' && message.delta.context === 'vessels.self').at(-1)
   const byPath = valuesByPath(self.delta)
   assert.equal(byPath['navigation.position'], null)
   assert.equal(byPath['navigation.speedOverGround'], null)
@@ -1251,7 +1251,7 @@ test('rapid own controls do not publish extra position samples', () => {
     messages.length = 0
 
     invoke(routes, 'POST', '/own/speed', { direction: 'up' })
-    const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
+    const self = messages.filter((message) => message.id === 'AJRM-SIM-N2K' && message.delta.context === 'vessels.self').at(-1)
     const byPath = valuesByPath(self.delta)
     assert.ok(byPath['navigation.speedThroughWater'] > 0)
     assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.position'), false)
@@ -1277,7 +1277,7 @@ test('own output publishes crabbing heading separately from COG', () => {
       environment: { currentSetDeg: 90, currentDriftKn: 1, currentVarying: false }
     })
     invoke(routes, 'POST', '/output', { enabled: true })
-    const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
+    const self = messages.filter((message) => message.id === 'AJRM-SIM-N2K' && message.delta.context === 'vessels.self').at(-1)
     const byPath = valuesByPath(self.delta)
     assert.ok(byPath['navigation.headingMagnetic'] > 0)
     assert.ok(byPath['navigation.courseOverGroundTrue'] > 0.19)
@@ -1306,7 +1306,7 @@ test('disabled environment clears simulated environment values and removes curre
     })
     invoke(routes, 'POST', '/environment', { enabled: false })
     invoke(routes, 'POST', '/output', { enabled: true })
-    const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
+    const self = messages.filter((message) => message.id === 'AJRM-SIM-N2K' && message.delta.context === 'vessels.self').at(-1)
     const byPath = valuesByPath(self.delta)
     assert.equal(byPath['environment.depth.belowTransducer'], null)
     assert.equal(byPath['environment.wind.speedApparent'], null)
@@ -1342,7 +1342,7 @@ test('manual depth edit remains stable while depth variation is enabled', async 
     invoke(routes, 'POST', '/environment', { depthM: 5.8 })
     await new Promise((resolve) => setTimeout(resolve, 260))
 
-    const ownMessages = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self')
+    const ownMessages = messages.filter((message) => message.id === 'AJRM-SIM-N2K' && message.delta.context === 'vessels.self')
     const depthValues = ownMessages
       .map((message) => Object.fromEntries(
         Object.entries(valuesByPath(message.delta))
@@ -1375,7 +1375,7 @@ test('own heading output can be disabled while COG remains available', () => {
     })
     invoke(routes, 'POST', '/output', { enabled: true })
     invoke(routes, 'POST', '/own/controls', { headingEnabled: false })
-    const self = messages.filter((message) => message.id === 'YDEN' && message.delta.context === 'vessels.self').at(-1)
+    const self = messages.filter((message) => message.id === 'AJRM-SIM-N2K' && message.delta.context === 'vessels.self').at(-1)
     const byPath = valuesByPath(self.delta)
     assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.headingMagnetic'), false)
     assert.equal(Object.prototype.hasOwnProperty.call(byPath, 'navigation.courseOverGroundTrue'), true)
@@ -1551,7 +1551,7 @@ function delay(ms) {
 
 function latestValuesByPath(messages, mmsi) {
   const message = messages
-    .filter((entry) => entry.id === 'YDEN' && String(entry.delta.context).includes(mmsi))
+    .filter((entry) => entry.id === 'AJRM-SIM-N2K' && String(entry.delta.context).includes(mmsi))
     .at(-1)
   assert.ok(message, `expected message for ${mmsi}`)
   return valuesByPath(message.delta)

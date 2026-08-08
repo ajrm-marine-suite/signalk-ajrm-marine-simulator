@@ -28,7 +28,7 @@ const SYNTHETIC_SAR_AIRCRAFT_MMSI = '111000599'
 const DEFAULT_ROUTE_RUDDER_DEG = 30
 const DEFAULT_GPX_ARRIVAL_RADIUS_M = 25
 const DEFAULT_MAGNETIC_VARIATION_DEG = -2.72
-const NMEA_GATEWAY_SOURCE = 'YDEN'
+const NMEA_GATEWAY_SOURCE = 'AJRM-SIM-N2K'
 const MAX_GPX_ROUTE_POINTS = 2000
 const MAX_GPX_SUBSTEPS = 500
 const RUNTIME_SETTINGS_VERSION = 2
@@ -1555,14 +1555,14 @@ module.exports = function ajrmMarineSimulator(app) {
       {
         id: 'base-1',
         enabled: true,
-        name: 'Craobh AIS Base',
+        name: 'SIM AIS BASE WEST',
         mmsi: '002350001',
         startPosition: { latitude: 56.211333, longitude: -5.559139 }
       },
       {
         id: 'base-2',
         enabled: true,
-        name: 'Kilmelford AIS Base',
+        name: 'SIM AIS BASE EAST',
         mmsi: '002350002',
         startPosition: { latitude: 56.267286, longitude: -5.552714 }
       }

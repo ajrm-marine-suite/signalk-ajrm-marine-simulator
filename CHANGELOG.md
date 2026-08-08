@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Publish simulated NMEA 2000 data under the explicit `AJRM-SIM-N2K` source
+  instead of impersonating one manufacturer's gateway.
+- Give simulated AIS base stations generic `SIM` names.
+
 ## 0.8.0
 
 - Add Signal K authentication to every state-changing HTTP route and publish a
